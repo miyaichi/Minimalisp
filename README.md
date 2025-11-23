@@ -28,7 +28,7 @@
 - Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
 - Automatic mark-and-sweep garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
-- Abstract GC API (`gc.h`/`gc.c`) ready for custom implementations (mark‑sweep, reference counting, etc.).
+- Abstract GC API (`include/gc.h` + `src/gc/*`) ready for custom implementations (mark‑sweep today, others later).
 
 ---
 
@@ -45,10 +45,10 @@
 # Activate Emscripten environment (adjust path as needed)
 source /path/to/emsdk_env.sh
 
-make
+make          # builds web/interpreter.js + .wasm
 ```
 
-The `make` command produces `interpreter.wasm`.
+`make` uses a repo-local `.emscripten-cache/` (created automatically) so the build works even in sandboxed environments. Serve the `web/` directory with any static file server to exercise the browser REPL.
 
 ### Compile native binary (optional)
 

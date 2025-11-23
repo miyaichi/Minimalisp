@@ -2,3 +2,4 @@ interpreter
 .vscode/
 web/interpreter.js
 web/interpreter.wasm
+.emscripten-cache/

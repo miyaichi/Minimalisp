@@ -5,6 +5,7 @@ NATIVE_CC ?= gcc
 NATIVE_CFLAGS ?= -Iinclude -lm
 SRC = src/interpreter.c src/gc/gc_runtime.c src/gc/mark_sweep.c
 WASM_DIR = web
+EM_CACHE ?= $(abspath .emscripten-cache)
 WASM_TARGET = $(WASM_DIR)/interpreter.js
 WASM_WASM = $(WASM_DIR)/interpreter.wasm
 NATIVE_TARGET = interpreter
@@ -14,8 +15,8 @@ NATIVE_TARGET = interpreter
 all: $(WASM_TARGET)
 
 $(WASM_TARGET): $(SRC)
-	mkdir -p $(WASM_DIR)
-	$(WASM_CC) $(WASM_CFLAGS) -o $@ $^
+	mkdir -p $(WASM_DIR) $(EM_CACHE)
+	EM_CACHE=$(EM_CACHE) $(WASM_CC) $(WASM_CFLAGS) -o $@ $^
 
 native: $(NATIVE_TARGET)
 
