@@ -33,6 +33,7 @@ test-native: native
 	./$(NATIVE_TARGET) -f hanoi.lisp >/dev/null
 	./$(NATIVE_TARGET) "(gc)" >/dev/null
 	./$(NATIVE_TARGET) "(gc-threshold 2048)" >/dev/null
+	./$(NATIVE_TARGET) "(begin (define foo nil) (define foo (list 1 2 3)) foo)" >/dev/null
 	printf '(define (foo x)\n  (+ x 1))\n(foo 4)\n' | ./$(NATIVE_TARGET) >/dev/null
 
 clean:

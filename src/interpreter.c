@@ -216,6 +216,7 @@ static void env_define(Env *env, const char *name, Value *value) {
     Binding *b = env->bindings;
     while (b) {
         if (strcmp(b->name, name) == 0) {
+            gc_write_barrier(b, value);
             b->value = value;
             return;
         }
@@ -224,8 +225,10 @@ static void env_define(Env *env, const char *name, Value *value) {
     Binding *binding = (Binding*)gc_allocate(sizeof(Binding));
     gc_set_trace(binding, trace_binding);
     binding->name = gc_copy_cstring(name);
+    gc_write_barrier(binding, value);
     binding->value = value;
     binding->next = env->bindings;
+    gc_write_barrier(env, binding);
     env->bindings = binding;
 }
 
@@ -234,6 +237,7 @@ static int env_set(Env *env, const char *name, Value *value) {
         Binding *b = e->bindings;
         while (b) {
             if (strcmp(b->name, name) == 0) {
+                gc_write_barrier(b, value);
                 b->value = value;
                 return 1;
             }
