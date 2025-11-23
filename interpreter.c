@@ -1,4 +1,4 @@
-// interpreter.c - Minimal Lisp interpreter core
+// interpreter.c - Minimal Lisp interpreter with list primitives, quoting, and simple runtime
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -6,23 +6,49 @@
 #include <setjmp.h>
 #include "gc.h"
 
+#define MAX_ARGS 64
+
+typedef struct Value Value;
+typedef struct Env Env;
+typedef struct Binding Binding;
+typedef Value *(*BuiltinFunc)(Value **args, int argc, Env *env);
+
 typedef enum {
     VAL_NUMBER,
     VAL_NIL,
     VAL_PAIR,
-    VAL_SYMBOL
+    VAL_SYMBOL,
+    VAL_BUILTIN,
+    VAL_LAMBDA
 } ValueType;
 
-typedef struct Value {
+struct Value {
     ValueType type;
     double number;
     char *symbol;
-    struct Value *car;
-    struct Value *cdr;
-} Value;
+    Value *car;
+    Value *cdr;
+    BuiltinFunc builtin;
+    Env *env;
+    Value *params;
+    Value *body;
+};
 
-static Value NIL_VALUE = {VAL_NIL, 0.0, NULL, NULL, NULL};
+struct Binding {
+    const char *name;
+    Value *value;
+    Binding *next;
+};
+
+struct Env {
+    Env *parent;
+    Binding *bindings;
+};
+
+static Value NIL_VALUE = {VAL_NIL, 0.0, NULL, NULL, NULL, NULL, NULL, NULL};
+static Value TRUE_VALUE = {VAL_SYMBOL, 0.0, "t", NULL, NULL, NULL, NULL, NULL};
 static Value *const NIL = &NIL_VALUE;
+static Value *const TRUE = &TRUE_VALUE;
 
 // Simple token types
 enum {TOK_LPAREN, TOK_RPAREN, TOK_NUMBER, TOK_SYMBOL, TOK_QUOTE, TOK_EOF};
@@ -32,45 +58,59 @@ typedef struct {
     char *text;
 } Token;
 
-// Forward declaration
-static void runtime_error(const char *fmt, ...);
-
-// Lexer state
 static const char *input_ptr;
 static Token cur_token;
+static jmp_buf eval_jmp_buf;
+static int eval_jmp_active = 0;
 
-static void skip_whitespace() {
+static Env *global_env = NULL;
+static int runtime_initialized = 0;
+
+static void runtime_error(const char *fmt, ...);
+static void print_value(Value *value);
+static void print_pair(Value *value);
+static void trace_value(void *obj);
+static void trace_env(void *obj);
+static void trace_binding(void *obj);
+static char *gc_alloc_buffer(size_t size);
+static char *gc_copy_cstring(const char *text);
+
+static int is_digit(char c) {
+    return c >= '0' && c <= '9';
+}
+
+static void skip_whitespace(void) {
     while (*input_ptr && (*input_ptr == ' ' || *input_ptr == '\t' || *input_ptr == '\n' || *input_ptr == '\r')) {
         input_ptr++;
     }
 }
 
-static Token next_token() {
+static Token next_token(void) {
     skip_whitespace();
     Token t;
     if (!*input_ptr) { t.type = TOK_EOF; t.text = NULL; return t; }
     char c = *input_ptr;
-    if (c == '(') { t.type = TOK_LPAREN; t.text = "("; input_ptr++; }
-    else if (c == ')') { t.type = TOK_RPAREN; t.text = ")"; input_ptr++; }
-    else if (c == '\'') { t.type = TOK_QUOTE; t.text = "'"; input_ptr++; }
-    else if ((c >= '0' && c <= '9') || c == '-') {
+    if (c == '(') { t.type = TOK_LPAREN; t.text = "("; input_ptr++; return t; }
+    if (c == ')') { t.type = TOK_RPAREN; t.text = ")"; input_ptr++; return t; }
+    if (c == '\'') { t.type = TOK_QUOTE; t.text = "'"; input_ptr++; return t; }
+    if (is_digit(c) || (c == '-' && is_digit(*(input_ptr + 1)))) {
         const char *start = input_ptr;
-        while ((*input_ptr >= '0' && *input_ptr <= '9') || *input_ptr == '.') input_ptr++;
+        input_ptr++;
+        while (is_digit(*input_ptr) || *input_ptr == '.') input_ptr++;
         size_t len = input_ptr - start;
-        char *num = (char*)gc_allocate(len + 1);
+        char *num = gc_alloc_buffer(len + 1);
         memcpy(num, start, len);
         num[len] = '\0';
         t.type = TOK_NUMBER; t.text = num;
-    } else {
-        // Symbol (e.g., +, *, print)
-        const char *start = input_ptr;
-        while (*input_ptr && *input_ptr != ' ' && *input_ptr != '\t' && *input_ptr != '\n' && *input_ptr != '(' && *input_ptr != ')') input_ptr++;
-        size_t len = input_ptr - start;
-        char *sym = (char*)gc_allocate(len + 1);
-        memcpy(sym, start, len);
-        sym[len] = '\0';
-        t.type = TOK_SYMBOL; t.text = sym;
+        return t;
     }
+    const char *start = input_ptr;
+    while (*input_ptr && *input_ptr != ' ' && *input_ptr != '\t' && *input_ptr != '\n' && *input_ptr != '(' && *input_ptr != ')' && *input_ptr != '\'') input_ptr++;
+    size_t len = input_ptr - start;
+    char *sym = gc_alloc_buffer(len + 1);
+    memcpy(sym, start, len);
+    sym[len] = '\0';
+    t.type = TOK_SYMBOL; t.text = sym;
     return t;
 }
 
@@ -81,14 +121,6 @@ static void consume(int expected) {
     }
     cur_token = next_token();
 }
-
-// Forward declarations
-static Value *eval_expr();
-static Value *read_data_expr();
-static void print_value(Value *value);
-
-static jmp_buf eval_jmp_buf;
-static int eval_jmp_active = 0;
 
 static void runtime_error(const char *fmt, ...) {
     va_list args;
@@ -102,36 +134,64 @@ static void runtime_error(const char *fmt, ...) {
     }
 }
 
-static Value *make_number(double num) {
+static char *gc_alloc_buffer(size_t size) {
+    char *buf = (char*)gc_allocate(size);
+    gc_set_trace(buf, NULL);
+    return buf;
+}
+
+static char *gc_copy_cstring(const char *text) {
+    size_t len = strlen(text);
+    char *copy = gc_alloc_buffer(len + 1);
+    memcpy(copy, text, len + 1);
+    return copy;
+}
+
+static Value *alloc_value(ValueType type) {
     Value *v = (Value*)gc_allocate(sizeof(Value));
-    v->type = VAL_NUMBER;
-    v->number = num;
+    gc_set_trace(v, trace_value);
+    v->type = type;
+    v->number = 0.0;
     v->symbol = NULL;
     v->car = NULL;
     v->cdr = NULL;
+    v->builtin = NULL;
+    v->env = NULL;
+    v->params = NULL;
+    v->body = NULL;
+    return v;
+}
+
+static Value *make_number(double num) {
+    Value *v = alloc_value(VAL_NUMBER);
+    v->number = num;
     return v;
 }
 
 static Value *make_symbol_copy(const char *text) {
-    size_t len = strlen(text);
-    char *copy = (char*)gc_allocate(len + 1);
-    memcpy(copy, text, len + 1);
-    Value *v = (Value*)gc_allocate(sizeof(Value));
-    v->type = VAL_SYMBOL;
-    v->number = 0.0;
-    v->symbol = copy;
-    v->car = NULL;
-    v->cdr = NULL;
+    Value *v = alloc_value(VAL_SYMBOL);
+    v->symbol = gc_copy_cstring(text);
     return v;
 }
 
 static Value *make_pair(Value *car, Value *cdr) {
-    Value *v = (Value*)gc_allocate(sizeof(Value));
-    v->type = VAL_PAIR;
+    Value *v = alloc_value(VAL_PAIR);
     v->car = car;
     v->cdr = cdr;
-    v->symbol = NULL;
-    v->number = 0.0;
+    return v;
+}
+
+static Value *make_builtin(BuiltinFunc fn) {
+    Value *v = alloc_value(VAL_BUILTIN);
+    v->builtin = fn;
+    return v;
+}
+
+static Value *make_lambda(Value *params, Value *body, Env *env) {
+    Value *v = alloc_value(VAL_LAMBDA);
+    v->params = params;
+    v->body = body;
+    v->env = env;
     return v;
 }
 
@@ -139,33 +199,81 @@ static int is_nil(Value *value) {
     return value == NULL || value->type == VAL_NIL;
 }
 
-static double as_number(Value *value, const char *context) {
-    if (!value || value->type != VAL_NUMBER) {
-        runtime_error("%s expects number arguments", context);
-    }
-    return value->number;
+static int is_truthy(Value *value) {
+    return !is_nil(value);
 }
 
-static Value *require_pair(Value *value, const char *context) {
-    if (!value || value->type != VAL_PAIR) {
-        runtime_error("%s expects list arguments", context);
-    }
-    return value;
+static Env *env_new(Env *parent) {
+    Env *env = (Env*)gc_allocate(sizeof(Env));
+    gc_set_trace(env, trace_env);
+    env->parent = parent;
+    env->bindings = NULL;
+    return env;
 }
 
-static Value *build_list(Value **items, int count) {
+static void env_define(Env *env, const char *name, Value *value) {
+    Binding *b = env->bindings;
+    while (b) {
+        if (strcmp(b->name, name) == 0) {
+            b->value = value;
+            return;
+        }
+        b = b->next;
+    }
+    Binding *binding = (Binding*)gc_allocate(sizeof(Binding));
+    gc_set_trace(binding, trace_binding);
+    binding->name = gc_copy_cstring(name);
+    binding->value = value;
+    binding->next = env->bindings;
+    env->bindings = binding;
+}
+
+static int env_set(Env *env, const char *name, Value *value) {
+    for (Env *e = env; e; e = e->parent) {
+        Binding *b = e->bindings;
+        while (b) {
+            if (strcmp(b->name, name) == 0) {
+                b->value = value;
+                return 1;
+            }
+            b = b->next;
+        }
+    }
+    return 0;
+}
+
+static Value *env_lookup(Env *env, const char *name) {
+    for (Env *e = env; e; e = e->parent) {
+        Binding *b = e->bindings;
+        while (b) {
+            if (strcmp(b->name, name) == 0) {
+                return b->value;
+            }
+            b = b->next;
+        }
+    }
+    runtime_error("Undefined symbol: %s", name);
+    return NIL;
+}
+
+static Value *read_form(void);
+static Value *eval_value(Value *expr, Env *env);
+static Value *eval_sequence(Value *exprs, Env *env);
+
+static Value *read_list(void) {
     Value *head = NIL;
     Value **tail = &head;
-    for (int i = 0; i < count; ++i) {
-        Value *node = make_pair(items[i], NIL);
+    while (cur_token.type != TOK_RPAREN && cur_token.type != TOK_EOF) {
+        Value *element = read_form();
+        Value *node = make_pair(element, NIL);
         *tail = node;
         tail = &node->cdr;
     }
+    consume(TOK_RPAREN);
     return head;
 }
 
-static Value *read_data_list(void);
-static Value *read_data_expr(void) {
+static Value *read_form(void) {
     if (cur_token.type == TOK_NUMBER) {
         double val = atof(cur_token.text);
         consume(TOK_NUMBER);
@@ -177,146 +285,395 @@ static Value *read_data_expr(void) {
         return make_symbol_copy(sym);
     } else if (cur_token.type == TOK_LPAREN) {
         consume(TOK_LPAREN);
-        return read_data_list();
+        return read_list();
     } else if (cur_token.type == TOK_QUOTE) {
         consume(TOK_QUOTE);
-        Value *inner = read_data_expr();
+        Value *inner = read_form();
         Value *quote_sym = make_symbol_copy("quote");
         return make_pair(quote_sym, make_pair(inner, NIL));
     } else {
-        runtime_error("Unexpected token while reading literal");
+        runtime_error("Unexpected token while reading");
         return NIL;
     }
 }
 
-static Value *read_data_list(void) {
+static Value *builtin_add(Value **args, int argc, Env *env) {
+    (void)env;
+    double sum = 0;
+    for (int i = 0; i < argc; ++i) {
+        if (!args[i] || args[i]->type != VAL_NUMBER) runtime_error("+ expects numbers");
+        sum += args[i]->number;
+    }
+    return make_number(sum);
+}
+
+static Value *builtin_sub(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc == 0) runtime_error("- expects at least one argument");
+    if (!args[0] || args[0]->type != VAL_NUMBER) runtime_error("- expects numbers");
+    double result = args[0]->number;
+    if (argc == 1) {
+        result = -result;
+    } else {
+        for (int i = 1; i < argc; ++i) {
+            if (!args[i] || args[i]->type != VAL_NUMBER) runtime_error("- expects numbers");
+            result -= args[i]->number;
+        }
+    }
+    return make_number(result);
+}
+
+static Value *builtin_mul(Value **args, int argc, Env *env) {
+    (void)env;
+    double product = 1;
+    for (int i = 0; i < argc; ++i) {
+        if (!args[i] || args[i]->type != VAL_NUMBER) runtime_error("* expects numbers");
+        product *= args[i]->number;
+    }
+    return make_number(product);
+}
+
+static Value *builtin_div(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc == 0) runtime_error("/ expects at least one argument");
+    if (!args[0] || args[0]->type != VAL_NUMBER) runtime_error("/ expects numbers");
+    double result = args[0]->number;
+    for (int i = 1; i < argc; ++i) {
+        if (!args[i] || args[i]->type != VAL_NUMBER) runtime_error("/ expects numbers");
+        result /= args[i]->number;
+    }
+    return make_number(result);
+}
+
+static Value *builtin_print(Value **args, int argc, Env *env);
+static Value *builtin_cons(Value **args, int argc, Env *env);
+static Value *builtin_car(Value **args, int argc, Env *env);
+static Value *builtin_cdr(Value **args, int argc, Env *env);
+static Value *builtin_list(Value **args, int argc, Env *env);
+static Value *builtin_eq(Value **args, int argc, Env *env);
+static Value *builtin_lt(Value **args, int argc, Env *env);
+static Value *builtin_gt(Value **args, int argc, Env *env);
+static Value *builtin_lte(Value **args, int argc, Env *env);
+static Value *builtin_gte(Value **args, int argc, Env *env);
+static Value *builtin_gc(Value **args, int argc, Env *env);
+static Value *builtin_gc_threshold(Value **args, int argc, Env *env);
+
+static Value *builtin_print(Value **args, int argc, Env *env) {
+    (void)env;
+    for (int i = 0; i < argc; ++i) {
+        if (i) printf(" ");
+        print_value(args[i]);
+    }
+    printf("\n");
+    return NIL;
+}
+
+static Value *builtin_cons(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 2) runtime_error("cons expects two arguments");
+    return make_pair(args[0], args[1]);
+}
+
+static Value *builtin_car(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 1) runtime_error("car expects one argument");
+    if (!args[0] || args[0]->type != VAL_PAIR) runtime_error("car expects a list");
+    return args[0]->car ? args[0]->car : NIL;
+}
+
+static Value *builtin_cdr(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 1) runtime_error("cdr expects one argument");
+    if (!args[0] || args[0]->type != VAL_PAIR) runtime_error("cdr expects a list");
+    return args[0]->cdr ? args[0]->cdr : NIL;
+}
+
+static Value *builtin_list(Value **args, int argc, Env *env) {
+    (void)env;
     Value *head = NIL;
     Value **tail = &head;
-    while (cur_token.type != TOK_RPAREN && cur_token.type != TOK_EOF) {
-        Value *element = read_data_expr();
-        Value *node = make_pair(element, NIL);
+    for (int i = 0; i < argc; ++i) {
+        Value *node = make_pair(args[i], NIL);
         *tail = node;
         tail = &node->cdr;
     }
-    consume(TOK_RPAREN);
     return head;
 }
 
-static Value *eval_list() {
-    // Assume '(' already consumed
+static Value *compare_chain(Value **args, int argc, int (*cmp)(double, double), const char *name) {
+    if (argc < 2) runtime_error("%s expects at least two numbers", name);
+    for (int i = 0; i < argc; ++i) {
+        if (!args[i] || args[i]->type != VAL_NUMBER) runtime_error("%s expects numbers", name);
+    }
+    for (int i = 0; i < argc - 1; ++i) {
+        if (!cmp(args[i]->number, args[i + 1]->number)) {
+            return NIL;
+        }
+    }
+    return TRUE;
+}
+
+static int cmp_eq(double a, double b) { return a == b; }
+static int cmp_lt(double a, double b) { return a < b; }
+static int cmp_gt(double a, double b) { return a > b; }
+static int cmp_lte(double a, double b) { return a <= b; }
+static int cmp_gte(double a, double b) { return a >= b; }
+
+static Value *builtin_eq(Value **args, int argc, Env *env)   { (void)env; return compare_chain(args, argc, cmp_eq, "="); }
+static Value *builtin_lt(Value **args, int argc, Env *env)   { (void)env; return compare_chain(args, argc, cmp_lt, "<"); }
+static Value *builtin_gt(Value **args, int argc, Env *env)   { (void)env; return compare_chain(args, argc, cmp_gt, ">"); }
+static Value *builtin_lte(Value **args, int argc, Env *env)  { (void)env; return compare_chain(args, argc, cmp_lte, "<="); }
+static Value *builtin_gte(Value **args, int argc, Env *env)  { (void)env; return compare_chain(args, argc, cmp_gte, ">="); }
+static Value *builtin_gc(Value **args, int argc, Env *env)   { (void)args; (void)argc; (void)env; gc_collect(); return NIL; }
+static Value *builtin_gc_threshold(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc == 0) {
+        return make_number((double)gc_get_threshold());
+    }
+    if (argc == 1) {
+        if (!args[0] || args[0]->type != VAL_NUMBER) {
+            runtime_error("gc-threshold expects a numeric byte value");
+        }
+        if (args[0]->number < 0) runtime_error("gc-threshold cannot be negative");
+        gc_set_threshold((size_t)args[0]->number);
+        return make_number((double)gc_get_threshold());
+    }
+    runtime_error("gc-threshold accepts zero or one argument");
+    return NIL;
+}
+
+static void install_builtin(Env *env, const char *name, BuiltinFunc fn) {
+    env_define(env, name, make_builtin(fn));
+}
+
+static void init_builtins(Env *env) {
+    env_define(env, "nil", NIL);
+    env_define(env, "t", TRUE);
+    install_builtin(env, "+", builtin_add);
+    install_builtin(env, "-", builtin_sub);
+    install_builtin(env, "*", builtin_mul);
+    install_builtin(env, "/", builtin_div);
+    install_builtin(env, "print", builtin_print);
+    install_builtin(env, "cons", builtin_cons);
+    install_builtin(env, "car", builtin_car);
+    install_builtin(env, "cdr", builtin_cdr);
+    install_builtin(env, "list", builtin_list);
+    install_builtin(env, "=", builtin_eq);
+    install_builtin(env, "<", builtin_lt);
+    install_builtin(env, ">", builtin_gt);
+    install_builtin(env, "<=", builtin_lte);
+    install_builtin(env, ">=", builtin_gte);
+    install_builtin(env, "gc", builtin_gc);
+    install_builtin(env, "gc-threshold", builtin_gc_threshold);
+}
+
+static void runtime_init(void) {
+    if (runtime_initialized) return;
+    gc_init();
+    global_env = env_new(NULL);
+    gc_add_root((void**)&global_env);
+    init_builtins(global_env);
+    runtime_initialized = 1;
+}
+
+static Value *eval_value(Value *expr, Env *env) {
+    if (!expr) return NIL;
+    switch (expr->type) {
+        case VAL_NUMBER:
+        case VAL_NIL:
+        case VAL_LAMBDA:
+        case VAL_BUILTIN:
+            return expr;
+        case VAL_SYMBOL:
+            return env_lookup(env, expr->symbol);
+        case VAL_PAIR: {
+            Value *op = expr->car;
+            if (!op) return NIL;
+            if (op->type == VAL_SYMBOL) {
+                const char *name = op->symbol;
+                Value *args = expr->cdr;
+                if (strcmp(name, "quote") == 0) {
+                    if (is_nil(args)) runtime_error("quote expects an argument");
+                    return args->car;
+                } else if (strcmp(name, "define") == 0) {
+                    if (is_nil(args)) runtime_error("define expects a symbol or list");
+                    Value *target = args->car;
+                    Value *value_exprs = args->cdr;
+                    if (is_nil(value_exprs)) runtime_error("define missing value");
+                    if (target->type == VAL_SYMBOL) {
+                        Value *val = eval_value(value_exprs->car, env);
+                        env_define(env, target->symbol, val);
+                        return target;
+                    } else if (target->type == VAL_PAIR) {
+                        Value *fn_name = target->car;
+                        if (!fn_name || fn_name->type != VAL_SYMBOL) {
+                            runtime_error("define function requires a name");
+                        }
+                        Value *lambda_params = target->cdr;
+                        Value *lambda_body = value_exprs;
+                        Value *lambda_value = make_lambda(lambda_params, lambda_body, env);
+                        env_define(env, fn_name->symbol, lambda_value);
+                        return fn_name;
+                    } else {
+                        runtime_error("define expects a symbol or (name args)");
+                    }
+                } else if (strcmp(name, "lambda") == 0) {
+                    if (is_nil(args)) runtime_error("lambda expects parameters");
+                    Value *params = args->car;
+                    Value *body = args->cdr;
+                    if (is_nil(body)) runtime_error("lambda body cannot be empty");
+                    return make_lambda(params, body, env);
+                } else if (strcmp(name, "if") == 0) {
+                    Value *test_expr = args ? args->car : NIL;
+                    Value *rest = args ? args->cdr : NIL;
+                    Value *then_expr = rest ? rest->car : NIL;
+                    Value *else_expr = (rest && rest->cdr) ? rest->cdr->car : NIL;
+                    Value *test_val = eval_value(test_expr, env);
+                    if (is_truthy(test_val)) {
+                        return eval_value(then_expr, env);
+                    } else {
+                        if (!is_nil(else_expr)) return eval_value(else_expr, env);
+                        return NIL;
+                    }
+                } else if (strcmp(name, "begin") == 0) {
+                    return eval_sequence(args, env);
+                }
+            }
+            // General application
+            Value *operator = eval_value(op, env);
+            Value *arg_values[MAX_ARGS];
+            int argc = 0;
+            Value *arg_list = expr->cdr;
+            while (!is_nil(arg_list)) {
+                if (arg_list->type != VAL_PAIR) runtime_error("Malformed argument list");
+                if (argc >= MAX_ARGS) runtime_error("Too many arguments");
+                arg_values[argc++] = eval_value(arg_list->car, env);
+                arg_list = arg_list->cdr;
+            }
+            if (!operator) runtime_error("Attempt to call nil");
+            if (operator->type == VAL_BUILTIN) {
+                return operator->builtin(arg_values, argc, env);
+            } else if (operator->type == VAL_LAMBDA) {
+                Env *call_env = env_new(operator->env ? operator->env : env);
+                Value *param_list = operator->params;
+                int index = 0;
+                while (!is_nil(param_list)) {
+                    if (param_list->type != VAL_PAIR) runtime_error("Malformed parameter list");
+                    Value *param = param_list->car;
+                    if (!param || param->type != VAL_SYMBOL) runtime_error("Parameters must be symbols");
+                    if (index >= argc) runtime_error("Too few arguments supplied");
+                    env_define(call_env, param->symbol, arg_values[index++]);
+                    param_list = param_list->cdr;
+                }
+                if (index != argc) runtime_error("Too many arguments supplied");
+                return eval_sequence(operator->body, call_env);
+            } else {
+                runtime_error("Attempt to call non-procedure");
+            }
+            return NIL;
+        }
+        default:
+            runtime_error("Cannot evaluate expression");
+            return NIL;
+    }
+}
+
+static Value *eval_sequence(Value *exprs, Env *env) {
     Value *result = NIL;
-    if (cur_token.type != TOK_SYMBOL) {
-        runtime_error("List expression must start with a symbol");
-        return NIL;
+    Value *current = exprs;
+    while (!is_nil(current)) {
+        if (current->type != VAL_PAIR) runtime_error("Malformed expression list");
+        result = eval_value(current->car, env);
+        current = current->cdr;
     }
-
-    char *op = cur_token.text;
-    consume(TOK_SYMBOL);
-
-    if (strcmp(op, "quote") == 0) {
-        Value *literal = read_data_expr();
-        consume(TOK_RPAREN);
-        return literal;
-    }
-
-    // Evaluate arguments until ')'
-    Value *args[16];
-    int argc = 0;
-    while (cur_token.type != TOK_RPAREN && cur_token.type != TOK_EOF) {
-        if (argc >= (int)(sizeof(args) / sizeof(args[0]))) {
-            runtime_error("Too many arguments to operator %s", op);
-        }
-        args[argc++] = eval_expr();
-    }
-
-    // Simple arithmetic ops
-    if (strcmp(op, "+") == 0) {
-        double sum = 0;
-        for (int i = 0; i < argc; i++) sum += as_number(args[i], op);
-        result = make_number(sum);
-    } else if (strcmp(op, "-") == 0) {
-        if (argc == 0) {
-            runtime_error("- expects at least one argument");
-        }
-        double subtotal = as_number(args[0], op);
-        if (argc == 1) {
-            subtotal = -subtotal;
-        } else {
-            for (int i = 1; i < argc; i++) subtotal -= as_number(args[i], op);
-        }
-        result = make_number(subtotal);
-    } else if (strcmp(op, "*") == 0) {
-        double product = 1;
-        for (int i = 0; i < argc; i++) product *= as_number(args[i], op);
-        result = make_number(product);
-    } else if (strcmp(op, "/") == 0) {
-        if (argc == 0) {
-            runtime_error("/ expects at least one argument");
-        }
-        double quotient = as_number(args[0], op);
-        for (int i = 1; i < argc; i++) quotient /= as_number(args[i], op);
-        result = make_number(quotient);
-    } else if (strcmp(op, "print") == 0) {
-        for (int i = 0; i < argc; i++) {
-            print_value(args[i]);
-            if (i + 1 < argc) printf(" ");
-        }
-        printf("\n");
-        result = NIL;
-    } else if (strcmp(op, "cons") == 0) {
-        if (argc != 2) {
-            runtime_error("cons expects exactly two arguments");
-        }
-        result = make_pair(args[0], args[1]);
-    } else if (strcmp(op, "car") == 0) {
-        if (argc != 1) {
-            runtime_error("car expects one argument");
-        }
-        Value *pair = require_pair(args[0], "car");
-        result = pair->car;
-    } else if (strcmp(op, "cdr") == 0) {
-        if (argc != 1) {
-            runtime_error("cdr expects one argument");
-        }
-        Value *pair = require_pair(args[0], "cdr");
-        result = pair->cdr;
-    } else if (strcmp(op, "list") == 0) {
-        result = build_list(args, argc);
-    } else {
-        runtime_error("Unknown operator: %s", op);
-    }
-
-    consume(TOK_RPAREN);
     return result;
 }
 
-static Value *eval_expr() {
-    if (cur_token.type == TOK_NUMBER) {
-        double val = atof(cur_token.text);
-        consume(TOK_NUMBER);
-        return make_number(val);
-    } else if (cur_token.type == TOK_LPAREN) {
-        consume(TOK_LPAREN);
-        return eval_list();
-    } else if (cur_token.type == TOK_QUOTE) {
-        consume(TOK_QUOTE);
-        return read_data_expr();
-    } else if (cur_token.type == TOK_SYMBOL) {
-        if (strcmp(cur_token.text, "nil") == 0) {
-            consume(TOK_SYMBOL);
-            return NIL;
+static Value *eval_source(const char *src, int *out_error) {
+    runtime_init();
+    Value *result = NIL;
+    eval_jmp_active = 1;
+    if (setjmp(eval_jmp_buf) == 0) {
+        input_ptr = src;
+        cur_token = next_token();
+        while (cur_token.type != TOK_EOF) {
+            Value *form = read_form();
+            result = eval_value(form, global_env);
         }
-        runtime_error("Unexpected symbol: %s", cur_token.text);
+        if (out_error) *out_error = 0;
     } else {
-        runtime_error("Unexpected token in expression");
+        if (out_error) *out_error = 1;
     }
-    return NIL;
+    eval_jmp_active = 0;
+    if (!out_error || !*out_error) {
+        gc_add_root((void**)&result);
+        gc_collect();
+        gc_remove_root((void**)&result);
+    } else {
+        gc_collect();
+    }
+    return result;
+}
+
+static void trace_binding(void *obj) {
+    Binding *binding = (Binding*)obj;
+    if (binding->name) gc_mark_ptr((void*)binding->name);
+    if (binding->value) gc_mark_ptr(binding->value);
+    if (binding->next) gc_mark_ptr(binding->next);
+}
+
+static void trace_env(void *obj) {
+    Env *env = (Env*)obj;
+    if (env->parent) gc_mark_ptr(env->parent);
+    if (env->bindings) gc_mark_ptr(env->bindings);
+}
+
+static void trace_value(void *obj) {
+    Value *value = (Value*)obj;
+    switch (value->type) {
+        case VAL_PAIR:
+            if (value->car) gc_mark_ptr(value->car);
+            if (value->cdr) gc_mark_ptr(value->cdr);
+            break;
+        case VAL_SYMBOL:
+            if (value->symbol) gc_mark_ptr(value->symbol);
+            break;
+        case VAL_LAMBDA:
+            if (value->params) gc_mark_ptr(value->params);
+            if (value->body) gc_mark_ptr(value->body);
+            if (value->env) gc_mark_ptr(value->env);
+            break;
+        case VAL_BUILTIN:
+        case VAL_NUMBER:
+        case VAL_NIL:
+        default:
+            break;
+    }
+}
+
+static void print_pair(Value *value);
+void print_value(Value *value) {
+    if (is_nil(value)) {
+        printf("()");
+    } else if (value->type == VAL_NUMBER) {
+        printf("%g", value->number);
+    } else if (value->type == VAL_SYMBOL) {
+        printf("%s", value->symbol);
+    } else if (value->type == VAL_PAIR) {
+        print_pair(value);
+    } else if (value->type == VAL_BUILTIN) {
+        printf("#<builtin>");
+    } else if (value->type == VAL_LAMBDA) {
+        printf("#<lambda>");
+    } else {
+        printf("<unknown>");
+    }
 }
 
 static void print_pair(Value *value) {
     printf("(");
     while (1) {
-        print_value(value->car);
+        print_value(value->car ? value->car : NIL);
         if (value->cdr && value->cdr->type == VAL_PAIR) {
             printf(" ");
             value = value->cdr;
@@ -330,57 +687,6 @@ static void print_pair(Value *value) {
         }
     }
     printf(")");
-}
-
-static void print_value(Value *value) {
-    if (is_nil(value)) {
-        printf("()");
-    } else if (value->type == VAL_NUMBER) {
-        printf("%g", value->number);
-    } else if (value->type == VAL_SYMBOL) {
-        printf("%s", value->symbol);
-    } else if (value->type == VAL_PAIR) {
-        print_pair(value);
-    } else {
-        printf("<unknown>");
-    }
-}
-
-static Value *eval_source(const char *src, int *out_error) {
-    Value *result = NIL;
-    eval_jmp_active = 1;
-    gc_init();
-    if (setjmp(eval_jmp_buf) == 0) {
-        input_ptr = src;
-        cur_token = next_token();
-        while (cur_token.type != TOK_EOF) {
-            result = eval_expr();
-        }
-        if (out_error) *out_error = 0;
-    } else {
-        if (out_error) *out_error = 1;
-    }
-    eval_jmp_active = 0;
-    gc_collect();
-    return result;
-}
-
-// Exported entry point for WASM/CLI
-// Returns result of evaluating the given Lisp source string.
-// Caller must provide a null‑terminated C string.
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-EMSCRIPTEN_KEEPALIVE
-#endif
-double eval(const char *src) {
-    int had_error = 0;
-    Value *value = eval_source(src, &had_error);
-    if (had_error || !value || value->type != VAL_NUMBER) {
-        runtime_error("Expression did not evaluate to a number");
-        return 0.0;
-    }
-    double result = value->number;
-    return result;
 }
 
 static char *read_line(void) {
@@ -434,17 +740,65 @@ static void repl(void) {
     }
 }
 
+static char *read_file(const char *path) {
+    FILE *f = fopen(path, "rb");
+    if (!f) {
+        fprintf(stderr, "Failed to open %s\n", path);
+        return NULL;
+    }
+    fseek(f, 0, SEEK_END);
+    long size = ftell(f);
+    rewind(f);
+    char *buffer = (char*)malloc(size + 1);
+    if (!buffer) {
+        fclose(f);
+        return NULL;
+    }
+    if (fread(buffer, 1, size, f) != (size_t)size) {
+        fclose(f);
+        free(buffer);
+        return NULL;
+    }
+    buffer[size] = '\0';
+    fclose(f);
+    return buffer;
+}
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EMSCRIPTEN_KEEPALIVE
+#endif
+double eval(const char *src) {
+    int had_error = 0;
+    Value *value = eval_source(src, &had_error);
+    if (had_error || !value || value->type != VAL_NUMBER) {
+        runtime_error("Expression did not evaluate to a number");
+        return 0.0;
+    }
+    return value->number;
+}
+
 #ifndef __EMSCRIPTEN__
 int main(int argc, char **argv) {
-    if (argc < 2) {
+    if (argc == 1) {
         repl();
+        return 0;
+    }
+    if (argc == 3 && strcmp(argv[1], "-f") == 0) {
+        char *contents = read_file(argv[2]);
+        if (!contents) return 1;
+        int had_error = 0;
+        Value *value = eval_source(contents, &had_error);
+        free(contents);
+        if (had_error) return 1;
+        printf("Result: ");
+        print_value(value);
+        printf("\n");
         return 0;
     }
     int had_error = 0;
     Value *value = eval_source(argv[1], &had_error);
-    if (had_error) {
-        return 1;
-    }
+    if (had_error) return 1;
     printf("Result: ");
     print_value(value);
     printf("\n");

@@ -11,7 +11,9 @@
 - [Features](#features)
 - [Building](#building)
 - [Usage](#usage)
-  - [Command‑line (native)](#command‑line-native)
+  - [Interactive REPL (native)](#interactive-repl-native)
+  - [Command‑line (native)](#command-line-native)
+  - [Script Files](#script-files)
   - [WebAssembly](#webassembly)
 - [Garbage Collector](#garbage-collector)
 - [Contributing](#contributing)
@@ -21,9 +23,10 @@
 
 ## Features
 
-- Minimal Lisp syntax (numbers, list literals via `cons`/`list`, quoting via `'` or `quote`).
-- Primitive list toolkit: `cons`, `car`, `cdr`, `list`, and the `nil` literal.
-- Simple REPL‑style evaluator ready for experimentation.
+- Minimal Lisp syntax with numbers, symbols, quoting (`'`/`quote`), and flexible list literals via `cons`/`list`.
+- Primitive list toolkit plus user‑defined procedures: `define`, `lambda`, `if`, and `begin` provide recursion and sequencing.
+- Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
+- Automatic mark-and-sweep garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
 - Abstract GC API (`gc.h`/`gc.c`) ready for custom implementations (mark‑sweep, reference counting, etc.).
 
@@ -60,7 +63,7 @@ make native
 make test-native
 ```
 
-Runs arithmetic, REPL-style, and list-focused smoke tests to keep the evaluator healthy.
+Runs arithmetic, REPL-style, list, quoting, and script smoke tests to keep the evaluator healthy.
 
 ---
 
@@ -70,23 +73,49 @@ Runs arithmetic, REPL-style, and list-focused smoke tests to keep the evaluator 
 
 ```sh
 ./interpreter
-ml> (+ 1 (* 2 3))
-7
+ml> (define (double x) (+ x x))
+double
+ml> (double 5)
+10
 ml> (list 1 2 (cons 3 nil))
 (1 2 (3))
-ml> (cdr (list 1 2 3))
-(2 3)
 ml> '(1 2 (+ 3 4))
 (1 2 (+ 3 4))
 ```
 
-`print` displays structured values, and `nil` is written as `()`. Press `Ctrl-D` (Unix) to exit.
+`define`d procedures persist for the current session, `print` displays structured values, and `nil` is written as `()`. Press `Ctrl-D` (Unix) to exit.
 
 ### Command-line (native)
 
 ```sh
-./interpreter "(print (+ 1 2 3))"
+./interpreter "(begin (define (double x) (+ x x)) (double 8))"
 ```
+
+`begin` lets you chain definitions with expressions inside a single invocation.
+
+### Garbage Collection Controls
+
+```sh
+./interpreter "(gc)"
+```
+
+The `(gc)` builtin forces an immediate mark-and-sweep cycle. Automatic collections trigger when total allocations exceed the current threshold, which you can inspect or set (in bytes) via `(gc-threshold)` or `(gc-threshold 2000000)`.
+
+### Script Files
+
+```sh
+./interpreter -f hanoi.lisp
+(A C)
+(A B)
+(C B)
+(A C)
+(B A)
+(B C)
+(A C)
+Result: ()
+```
+
+Use the `-f` flag to evaluate any `.lisp` file; the bundled `hanoi.lisp` prints the sequence of moves for a 3-disk Tower of Hanoi run.
 
 ### WebAssembly
 
