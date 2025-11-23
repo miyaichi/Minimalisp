@@ -23,7 +23,7 @@ void *gc_allocate(size_t size);
 void gc_set_trace(void *ptr, gc_trace_func trace);
 
 // Mark a GC-managed pointer as reachable (used by trace callbacks).
-void gc_mark_ptr(void *ptr);
+void *gc_mark_ptr(void *ptr);
 
 // Register/unregister a root pointer slot.
 void gc_add_root(void **slot);

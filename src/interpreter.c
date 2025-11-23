@@ -643,31 +643,31 @@ static Value *eval_source(const char *src, int *out_error) {
 
 static void trace_binding(void *obj) {
     Binding *binding = (Binding*)obj;
-    if (binding->name) gc_mark_ptr((void*)binding->name);
-    if (binding->value) gc_mark_ptr(binding->value);
-    if (binding->next) gc_mark_ptr(binding->next);
+    if (binding->name) binding->name = (const char*)gc_mark_ptr((void*)binding->name);
+    if (binding->value) binding->value = gc_mark_ptr(binding->value);
+    if (binding->next) binding->next = (Binding*)gc_mark_ptr(binding->next);
 }
 
 static void trace_env(void *obj) {
     Env *env = (Env*)obj;
-    if (env->parent) gc_mark_ptr(env->parent);
-    if (env->bindings) gc_mark_ptr(env->bindings);
+    if (env->parent) env->parent = (Env*)gc_mark_ptr(env->parent);
+    if (env->bindings) env->bindings = (Binding*)gc_mark_ptr(env->bindings);
 }
 
 static void trace_value(void *obj) {
     Value *value = (Value*)obj;
     switch (value->type) {
         case VAL_PAIR:
-            if (value->car) gc_mark_ptr(value->car);
-            if (value->cdr) gc_mark_ptr(value->cdr);
+            if (value->car) value->car = gc_mark_ptr(value->car);
+            if (value->cdr) value->cdr = gc_mark_ptr(value->cdr);
             break;
         case VAL_SYMBOL:
-            if (value->symbol) gc_mark_ptr(value->symbol);
+            if (value->symbol) value->symbol = (char*)gc_mark_ptr(value->symbol);
             break;
         case VAL_LAMBDA:
-            if (value->params) gc_mark_ptr(value->params);
-            if (value->body) gc_mark_ptr(value->body);
-            if (value->env) gc_mark_ptr(value->env);
+            if (value->params) value->params = gc_mark_ptr(value->params);
+            if (value->body) value->body = gc_mark_ptr(value->body);
+            if (value->env) value->env = (Env*)gc_mark_ptr(value->env);
             break;
         case VAL_BUILTIN:
         case VAL_NUMBER:

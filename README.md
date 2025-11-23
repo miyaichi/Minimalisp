@@ -28,7 +28,7 @@
 - Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
 - Automatic mark-and-sweep garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
-- Abstract GC API (`include/gc.h` + `src/gc/*`) ready for custom implementations (mark‑sweep today, others later).
+- Abstract GC API (`include/gc.h` + `src/gc/*`) with swappable backends (mark‑sweep by default, copying GC via `GC_BACKEND=copying`).
 
 ---
 
@@ -100,6 +100,15 @@ ml> '(1 2 (+ 3 4))
 ```
 
 The `(gc)` builtin forces an immediate mark-and-sweep cycle. Automatic collections trigger when total allocations exceed the current threshold, which you can inspect or set (in bytes) via `(gc-threshold)` or `(gc-threshold 2000000)`.
+
+### Selecting a GC backend
+
+```sh
+GC_BACKEND=copying ./interpreter "(print 'hello)"
+GC_BACKEND=copying make test-native
+```
+
+Set `GC_BACKEND=copying` to run the semispace copying collector; omit the variable (or set `mark-sweep`) to use the default mark-and-sweep backend. Copying GC currently allocates a fixed 2 MB semispace per heap—tweak `DEFAULT_COPY_HEAP` in `src/gc/copying.c` if you need more headroom.
 
 ### Script Files
 

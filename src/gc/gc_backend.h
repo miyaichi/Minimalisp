@@ -7,7 +7,7 @@ typedef struct GcBackend {
     void (*init)(void);
     void *(*allocate)(size_t size);
     void (*set_trace)(void *ptr, gc_trace_func trace);
-    void (*mark_ptr)(void *ptr);
+    void *(*mark_ptr)(void *ptr);
     void (*add_root)(void **slot);
     void (*remove_root)(void **slot);
     void (*collect)(void);
@@ -22,5 +22,6 @@ typedef struct GcBackend {
 } GcBackend;
 
 const GcBackend *gc_mark_sweep_backend(void);
+const GcBackend *gc_copying_backend(void);
 
 #endif

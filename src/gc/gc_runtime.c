@@ -1,11 +1,23 @@
 #include "gc.h"
 #include "gc_backend.h"
+#include <stdlib.h>
+#include <string.h>
 
 static const GcBackend *gc_backend = NULL;
 
+static const GcBackend *select_backend(void) {
+    const char *env = getenv("GC_BACKEND");
+    if (env) {
+        if (strcmp(env, "copy") == 0 || strcmp(env, "copying") == 0 || strcmp(env, "semispace") == 0) {
+            return gc_copying_backend();
+        }
+    }
+    return gc_mark_sweep_backend();
+}
+
 static void ensure_backend(void) {
     if (!gc_backend) {
-        gc_backend = gc_mark_sweep_backend();
+        gc_backend = select_backend();
     }
 }
 
@@ -24,9 +36,9 @@ void gc_set_trace(void *ptr, gc_trace_func trace) {
     gc_backend->set_trace(ptr, trace);
 }
 
-void gc_mark_ptr(void *ptr) {
+void *gc_mark_ptr(void *ptr) {
     ensure_backend();
-    gc_backend->mark_ptr(ptr);
+    return gc_backend->mark_ptr(ptr);
 }
 
 void gc_add_root(void **slot) {

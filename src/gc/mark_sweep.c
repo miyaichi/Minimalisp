@@ -114,14 +114,17 @@ static void ms_set_trace(void *ptr, gc_trace_func trace) {
     header->trace = trace;
 }
 
-static void ms_mark_ptr(void *ptr) {
-    if (!ptr) return;
+static void *ms_mark_ptr(void *ptr) {
+    if (!ptr) return NULL;
     GcHeader *header = gc_find_header(ptr);
-    if (!header || header->marked) return;
-    header->marked = 1;
-    if (header->trace) {
-        header->trace(ptr);
+    if (!header) return NULL;
+    if (!header->marked) {
+        header->marked = 1;
+        if (header->trace) {
+            header->trace(ptr);
+        }
     }
+    return ptr;
 }
 
 static void ms_add_root(void **slot) {
