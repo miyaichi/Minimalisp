@@ -21,8 +21,9 @@
 
 ## Features
 
-- Minimal Lisp syntax (numbers, symbols, basic arithmetic, `print`).
-- Simple REPL‑style evaluator.
+- Minimal Lisp syntax (numbers, list literals via `cons`/`list`, quoting via `'` or `quote`).
+- Primitive list toolkit: `cons`, `car`, `cdr`, `list`, and the `nil` literal.
+- Simple REPL‑style evaluator ready for experimentation.
 - Buildable to native binary **and** WebAssembly.
 - Abstract GC API (`gc.h`/`gc.c`) ready for custom implementations (mark‑sweep, reference counting, etc.).
 
@@ -59,7 +60,7 @@ make native
 make test-native
 ```
 
-Runs a simple expression and a REPL-style line to ensure arithmetic and the prompt remain functional.
+Runs arithmetic, REPL-style, and list-focused smoke tests to keep the evaluator healthy.
 
 ---
 
@@ -71,12 +72,15 @@ Runs a simple expression and a REPL-style line to ensure arithmetic and the prom
 ./interpreter
 ml> (+ 1 (* 2 3))
 7
-ml> (print (+ 1 2 3))
-6 
-0
+ml> (list 1 2 (cons 3 nil))
+(1 2 (3))
+ml> (cdr (list 1 2 3))
+(2 3)
+ml> '(1 2 (+ 3 4))
+(1 2 (+ 3 4))
 ```
 
-Press `Ctrl-D` (Unix) to exit.
+`print` displays structured values, and `nil` is written as `()`. Press `Ctrl-D` (Unix) to exit.
 
 ### Command-line (native)
 

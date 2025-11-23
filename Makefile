@@ -22,6 +22,9 @@ $(NATIVE_TARGET): $(SRC)
 test-native: native
 	./$(NATIVE_TARGET) "(+ 1 (* 2 3))" >/dev/null
 	printf '(+ 1 2)\n' | ./$(NATIVE_TARGET) >/dev/null
+	./$(NATIVE_TARGET) "(car (list 1 2 3))" >/dev/null
+	./$(NATIVE_TARGET) "(cdr (list 1 2 3))" >/dev/null
+	./$(NATIVE_TARGET) "'(1 2 (3 4))" >/dev/null
 
 clean:
 	rm -f $(WASM_TARGET) $(NATIVE_TARGET)
