@@ -131,6 +131,29 @@ const fs = require('fs');
 
 > **Note**: The exact loading code depends on how Emscripten is configured. The above is illustrative.
 
+### Visualization Dashboard
+
+Minimalisp includes a web-based dashboard to visualize Garbage Collection in real-time.
+
+1.  **Build**:
+    ```sh
+    make
+    ```
+    This generates `interpreter.js` and `interpreter.wasm`.
+
+2.  **Run Server**:
+    ```sh
+    python3 -m http.server
+    ```
+
+3.  **Open Browser**:
+    Navigate to [http://localhost:8000](http://localhost:8000).
+
+**Features**:
+- **Interactive REPL**: Execute Lisp code directly in the browser. Supports multi-line input.
+- **Real-time Monitoring**: Watch memory usage (allocated vs current) and GC cycles update live.
+- **Stress Test**: Run an automated allocation loop to observe GC behavior under load.
+
 ---
 
 ## Garbage Collector
