@@ -119,17 +119,12 @@ Use the `-f` flag to evaluate any `.lisp` file; the bundled `hanoi.lisp` prints 
 
 ### WebAssembly
 
-Load `interpreter.wasm` in a JavaScript environment (browser or Node.js). Example (Node.js):
-
-```js
-const fs = require('fs');
-// Placeholder for actual Emscripten loading code
-// const Module = require('./interpreter.js');
-// const evalFunc = Module.cwrap('eval', 'number', ['string']);
-// console.log('Result:', evalFunc('(print (+ 1 2 3))'));
+```sh
+make            # produces web/interpreter.js + .wasm
+python3 -m http.server 8080 --directory web
 ```
 
-> **Note**: The exact loading code depends on how Emscripten is configured. The above is illustrative.
+Open `http://localhost:8080/` to use the bundled `web/index.html` harness that loads `interpreter.js` and lets you run Minimalisp programs in the browser.
 
 ### Visualization Dashboard
 

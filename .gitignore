@@ -1,4 +1,4 @@
 interpreter
-interpreter.wasm
 .vscode/
-interpreter.js
+web/interpreter.js
+web/interpreter.wasm

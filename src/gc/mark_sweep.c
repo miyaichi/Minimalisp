@@ -1,9 +1,11 @@
-// gc.c - Simple mark-and-sweep garbage collector
-#include "gc.h"
+// mark_sweep.c - Mark-and-sweep GC backend
+#include "gc_backend.h"
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
 
+// Allocation headers are woven into a doubly-linked list so we can sweep
+// without separate metadata structures.
 typedef struct GcHeader {
     struct GcHeader *prev;
     struct GcHeader *next;
@@ -12,13 +14,17 @@ typedef struct GcHeader {
     gc_trace_func trace;
 } GcHeader;
 
+// Roots are stored as slots (addresses of Value*/Env* pointers) to avoid
+// guessing lifespan — the interpreter registers/unregisters them.
 typedef struct {
     void **slot;
 } GcRoot;
 
+// Global state for the backend; a single mark/sweep heap is shared by all
+// allocations.
 static GcHeader *gc_objects = NULL;
 static size_t gc_bytes_allocated = 0;
-static size_t gc_next_threshold = 1024 * 1024; // 1 MB default
+static size_t gc_next_threshold = 1024 * 1024; // 1 MB default trigger
 static const double GC_GROWTH_FACTOR = 2.0;
 static GcRoot *gc_roots = NULL;
 static size_t gc_root_count = 0;
@@ -26,6 +32,8 @@ static size_t gc_root_capacity = 0;
 static int gc_initialized = 0;
 static int gc_collecting = 0;
 static GcStats internal_stats = {0, 0, 0, 0};
+
+static void ms_collect(void);
 
 static GcHeader *gc_header_for(void *ptr) {
     if (!ptr) return NULL;
@@ -40,6 +48,7 @@ static GcHeader *gc_find_header(void *ptr) {
     return NULL;
 }
 
+// Simple dynamic array helper for root slots.
 static void gc_roots_reserve(size_t capacity) {
     if (gc_root_capacity >= capacity) return;
     size_t new_cap = gc_root_capacity ? gc_root_capacity * 2 : 32;
@@ -53,7 +62,9 @@ static void gc_roots_reserve(size_t capacity) {
     gc_root_capacity = new_cap;
 }
 
-void gc_init(void) {
+// Backend entry points ------------------------------------------------------
+
+static void ms_init(void) {
     if (gc_initialized) return;
     gc_initialized = 1;
     gc_objects = NULL;
@@ -65,11 +76,12 @@ void gc_init(void) {
     memset(&internal_stats, 0, sizeof(internal_stats));
 }
 
-void *gc_allocate(size_t size) {
+static void *ms_allocate(size_t size) {
     if (!gc_initialized) {
         fprintf(stderr, "GC not initialized. Call gc_init() first.\n");
         exit(1);
     }
+    // Header is stored directly before the payload; this keeps pointer updates cheap.
     GcHeader *header = (GcHeader*)malloc(sizeof(GcHeader) + size);
     if (!header) {
         fprintf(stderr, "GC allocation failed for %zu bytes\n", size);
@@ -88,20 +100,21 @@ void *gc_allocate(size_t size) {
     internal_stats.allocated_bytes += size;
     internal_stats.current_bytes += size;
 
+    // Trigger opportunistic collection once we exceed the rolling threshold.
     if (!gc_collecting && gc_bytes_allocated > gc_next_threshold) {
-        gc_collect();
+        ms_collect();
         gc_next_threshold = (size_t)(gc_bytes_allocated * GC_GROWTH_FACTOR);
     }
     return payload;
 }
 
-void gc_set_trace(void *ptr, gc_trace_func trace) {
+static void ms_set_trace(void *ptr, gc_trace_func trace) {
     if (!ptr) return;
     GcHeader *header = gc_header_for(ptr);
     header->trace = trace;
 }
 
-void gc_mark_ptr(void *ptr) {
+static void ms_mark_ptr(void *ptr) {
     if (!ptr) return;
     GcHeader *header = gc_find_header(ptr);
     if (!header || header->marked) return;
@@ -111,7 +124,7 @@ void gc_mark_ptr(void *ptr) {
     }
 }
 
-void gc_add_root(void **slot) {
+static void ms_add_root(void **slot) {
     if (!slot) return;
     for (size_t i = 0; i < gc_root_count; ++i) {
         if (gc_roots[i].slot == slot) return;
@@ -120,7 +133,7 @@ void gc_add_root(void **slot) {
     gc_roots[gc_root_count++].slot = slot;
 }
 
-void gc_remove_root(void **slot) {
+static void ms_remove_root(void **slot) {
     if (!slot) return;
     for (size_t i = 0; i < gc_root_count; ++i) {
         if (gc_roots[i].slot == slot) {
@@ -131,13 +144,16 @@ void gc_remove_root(void **slot) {
     }
 }
 
+// Mark phase walks all root slots and recursively invokes trace hooks.
 static void gc_mark_roots(void) {
     for (size_t i = 0; i < gc_root_count; ++i) {
         void *ptr = *(gc_roots[i].slot);
-        if (ptr) gc_mark_ptr(ptr);
+        if (ptr) ms_mark_ptr(ptr);
     }
 }
 
+// Sweep passes through the allocation list, unlinking any unmarked object and
+// compacting stats as we go. Mark bits are cleared for the next cycle.
 static void gc_sweep(void) {
     GcHeader *obj = gc_objects;
     while (obj) {
@@ -157,7 +173,7 @@ static void gc_sweep(void) {
     }
 }
 
-void gc_collect(void) {
+static void ms_collect(void) {
     if (!gc_initialized || gc_collecting) return;
     gc_collecting = 1;
     internal_stats.collections++;
@@ -167,7 +183,7 @@ void gc_collect(void) {
     gc_collecting = 0;
 }
 
-void gc_free(void *ptr) {
+static void ms_free(void *ptr) {
     if (!ptr) return;
     GcHeader *header = gc_header_for(ptr);
     if (header->prev) header->prev->next = header->next;
@@ -179,7 +195,7 @@ void gc_free(void *ptr) {
     free(header);
 }
 
-void gc_set_threshold(size_t bytes) {
+static void ms_set_threshold(size_t bytes) {
     if (bytes < 1024) bytes = 1024;
     gc_next_threshold = bytes;
     if (gc_bytes_allocated > gc_next_threshold) {
@@ -187,17 +203,39 @@ void gc_set_threshold(size_t bytes) {
     }
 }
 
-size_t gc_get_threshold(void) {
+static size_t ms_get_threshold(void) {
     return gc_next_threshold;
 }
 
-void gc_get_stats(GcStats *out_stats) {
+static void ms_get_stats(GcStats *out_stats) {
     if (out_stats) {
         *out_stats = internal_stats;
     }
 }
 
-double gc_get_collections_count(void) { return (double)internal_stats.collections; }
-double gc_get_allocated_bytes(void) { return (double)internal_stats.allocated_bytes; }
-double gc_get_freed_bytes(void) { return (double)internal_stats.freed_bytes; }
-double gc_get_current_bytes(void) { return (double)internal_stats.current_bytes; }
+static double ms_get_collections_count(void) { return (double)internal_stats.collections; }
+static double ms_get_allocated_bytes(void) { return (double)internal_stats.allocated_bytes; }
+static double ms_get_freed_bytes(void) { return (double)internal_stats.freed_bytes; }
+static double ms_get_current_bytes(void) { return (double)internal_stats.current_bytes; }
+
+const GcBackend *gc_mark_sweep_backend(void) {
+    static const GcBackend backend = {
+        ms_init,
+        ms_allocate,
+        ms_set_trace,
+        ms_mark_ptr,
+        ms_add_root,
+        ms_remove_root,
+        ms_collect,
+        ms_free,
+        ms_set_threshold,
+        ms_get_threshold,
+        ms_get_stats,
+        ms_get_collections_count,
+        ms_get_allocated_bytes,
+        ms_get_freed_bytes,
+        ms_get_current_bytes
+    };
+    return &backend;
+}
+static void ms_collect(void);

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Minimalisp (WebAssembly)</title>
+    <style>
+      body { font-family: monospace; background: #1e1e1e; color: #f0f0f0; padding: 1rem; }
+      textarea { width: 100%; height: 10rem; }
+      button { padding: 0.5rem 1rem; margin-top: 0.5rem; }
+      pre { background: #111; padding: 0.5rem; min-height: 5rem; }
+    </style>
+  </head>
+  <body>
+    <h1>Minimalisp WASM REPL</h1>
+    <p>Build the WebAssembly module via <code>make</code>, then open this page with a static file server.</p>
+    <textarea id="program">(print (+ 1 2 3))</textarea>
+    <br />
+    <button id="runBtn">Run</button>
+    <pre id="output">Output will appear here…</pre>
+    <script src="interpreter.js"></script>
+    <script>
+      const runBtn = document.getElementById('runBtn');
+      const output = document.getElementById('output');
+      const program = document.getElementById('program');
+
+      function append(text) {
+        output.textContent += text + '\n';
+      }
+
+      Module['onRuntimeInitialized'] = () => {
+        const evalFunc = Module.cwrap('eval', 'number', ['string']);
+        runBtn.addEventListener('click', () => {
+          output.textContent = '';
+          try {
+            const result = evalFunc(program.value);
+            append('Result: ' + result);
+          } catch (e) {
+            append('Error: ' + e);
+          }
+        });
+      };
+    </script>
+  </body>
+</html>
