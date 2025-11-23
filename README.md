@@ -83,7 +83,7 @@ ml> '(1 2 (+ 3 4))
 (1 2 (+ 3 4))
 ```
 
-`define`d procedures persist for the current session, `print` displays structured values, and `nil` is written as `()`. Press `Ctrl-D` (Unix) to exit.
+`define`d procedures persist for the current session, `print` displays structured values, and `nil` is written as `()`. Multiline forms are supported—when the prompt changes to `...>`, keep typing until your parentheses balance. Press `Ctrl-D` (Unix) to exit.
 
 ### Command-line (native)
 

@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Minimalisp GC Monitor</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            max-width: 800px;
+            margin: 0 auto;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+            margin-bottom: 40px;
+        }
+
+        .controls {
+            margin-bottom: 20px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 5px;
+        }
+
+        button {
+            padding: 8px 16px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Minimalisp GC Monitor</h1>
+
+    <div class="controls">
+        <button id="startBtn">Start Stress Test</button>
+        <button id="stopBtn" disabled>Stop</button>
+        <button id="gcBtn">Force GC</button>
+        <span id="status">Status: Ready</span>
+    </div>
+
+    <div class="repl-container" style="margin-bottom: 20px; border: 1px solid #ccc; padding: 10px; border-radius: 5px;">
+        <h3>Interactive REPL</h3>
+        <div id="terminal"
+            style="background: #222; color: #0f0; padding: 10px; height: 150px; overflow-y: auto; font-family: monospace; margin-bottom: 10px;">
+        </div>
+        <div style="display: flex;">
+            <input type="text" id="commandInput" placeholder="(cons 1 2)"
+                style="flex-grow: 1; padding: 8px; font-family: monospace;">
+            <button id="runBtn" style="margin-left: 10px;">Run</button>
+        </div>
+    </div>
+
+    <div class="chart-container">
+        <canvas id="memoryChart"></canvas>
+    </div>
+    <div class="chart-container">
+        <canvas id="collectionsChart"></canvas>
+    </div>
+
+    <script src="interpreter.js"></script>
+    <script src="main.js"></script>
+</body>
+
+</html>

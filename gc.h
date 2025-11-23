@@ -6,6 +6,13 @@
 
 typedef void (*gc_trace_func)(void *object);
 
+typedef struct {
+    size_t collections;
+    size_t allocated_bytes;
+    size_t freed_bytes;
+    size_t current_bytes;
+} GcStats;
+
 // Initialize the garbage collector. Must be called before any allocation.
 void gc_init(void);
 
@@ -25,6 +32,15 @@ void gc_remove_root(void **slot);
 // Adjust/get the automatic GC threshold in bytes.
 void gc_set_threshold(size_t bytes);
 size_t gc_get_threshold(void);
+
+// Get current GC statistics.
+void gc_get_stats(GcStats *out_stats);
+
+// Helper getters for WASM binding
+double gc_get_collections_count(void);
+double gc_get_allocated_bytes(void);
+double gc_get_freed_bytes(void);
+double gc_get_current_bytes(void);
 
 // Perform a garbage collection cycle.
 void gc_collect(void);

@@ -25,6 +25,7 @@ static size_t gc_root_count = 0;
 static size_t gc_root_capacity = 0;
 static int gc_initialized = 0;
 static int gc_collecting = 0;
+static GcStats internal_stats = {0, 0, 0, 0};
 
 static GcHeader *gc_header_for(void *ptr) {
     if (!ptr) return NULL;
@@ -61,6 +62,7 @@ void gc_init(void) {
     gc_root_capacity = 0;
     gc_bytes_allocated = 0;
     gc_next_threshold = 1024 * 1024;
+    memset(&internal_stats, 0, sizeof(internal_stats));
 }
 
 void *gc_allocate(size_t size) {
@@ -83,6 +85,9 @@ void *gc_allocate(size_t size) {
     void *payload = (void*)(header + 1);
     memset(payload, 0, size);
     gc_bytes_allocated += size;
+    internal_stats.allocated_bytes += size;
+    internal_stats.current_bytes += size;
+
     if (!gc_collecting && gc_bytes_allocated > gc_next_threshold) {
         gc_collect();
         gc_next_threshold = (size_t)(gc_bytes_allocated * GC_GROWTH_FACTOR);
@@ -141,6 +146,9 @@ static void gc_sweep(void) {
             if (obj->prev) obj->prev->next = obj->next;
             else gc_objects = obj->next;
             if (obj->next) obj->next->prev = obj->prev;
+            
+            internal_stats.freed_bytes += obj->size;
+            internal_stats.current_bytes -= obj->size;
             free(obj);
         } else {
             obj->marked = 0;
@@ -152,6 +160,7 @@ static void gc_sweep(void) {
 void gc_collect(void) {
     if (!gc_initialized || gc_collecting) return;
     gc_collecting = 1;
+    internal_stats.collections++;
     gc_mark_roots();
     gc_sweep();
     gc_next_threshold = (size_t)(gc_bytes_allocated * GC_GROWTH_FACTOR + 1024);
@@ -164,6 +173,9 @@ void gc_free(void *ptr) {
     if (header->prev) header->prev->next = header->next;
     else gc_objects = header->next;
     if (header->next) header->next->prev = header->prev;
+    
+    internal_stats.freed_bytes += header->size;
+    internal_stats.current_bytes -= header->size;
     free(header);
 }
 
@@ -178,3 +190,14 @@ void gc_set_threshold(size_t bytes) {
 size_t gc_get_threshold(void) {
     return gc_next_threshold;
 }
+
+void gc_get_stats(GcStats *out_stats) {
+    if (out_stats) {
+        *out_stats = internal_stats;
+    }
+}
+
+double gc_get_collections_count(void) { return (double)internal_stats.collections; }
+double gc_get_allocated_bytes(void) { return (double)internal_stats.allocated_bytes; }
+double gc_get_freed_bytes(void) { return (double)internal_stats.freed_bytes; }
+double gc_get_current_bytes(void) { return (double)internal_stats.current_bytes; }

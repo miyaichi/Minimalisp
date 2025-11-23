@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdarg.h>
 #include <setjmp.h>
+#include <ctype.h>
 #include "gc.h"
 
 #define MAX_ARGS 64
@@ -357,6 +358,7 @@ static Value *builtin_lte(Value **args, int argc, Env *env);
 static Value *builtin_gte(Value **args, int argc, Env *env);
 static Value *builtin_gc(Value **args, int argc, Env *env);
 static Value *builtin_gc_threshold(Value **args, int argc, Env *env);
+static Value *builtin_gc_stats(Value **args, int argc, Env *env);
 
 static Value *builtin_print(Value **args, int argc, Env *env) {
     (void)env;
@@ -442,6 +444,29 @@ static Value *builtin_gc_threshold(Value **args, int argc, Env *env) {
     return NIL;
 }
 
+static Value *builtin_gc_stats(Value **args, int argc, Env *env) {
+    (void)args; (void)argc; (void)env;
+    GcStats stats;
+    gc_get_stats(&stats);
+
+    // Construct association list: ((collections . N) (allocated . N) (freed . N) (current . N))
+    // We build it in reverse order to make it easier: current -> freed -> allocated -> collections
+    
+    Value *current_pair = make_pair(make_symbol_copy("current"), make_number((double)stats.current_bytes));
+    Value *list = make_pair(current_pair, NIL); // (current . N)
+
+    Value *freed_pair = make_pair(make_symbol_copy("freed"), make_number((double)stats.freed_bytes));
+    list = make_pair(freed_pair, list); // (freed . N) ...
+
+    Value *allocated_pair = make_pair(make_symbol_copy("allocated"), make_number((double)stats.allocated_bytes));
+    list = make_pair(allocated_pair, list); // (allocated . N) ...
+
+    Value *collections_pair = make_pair(make_symbol_copy("collections"), make_number((double)stats.collections));
+    list = make_pair(collections_pair, list); // (collections . N) ...
+
+    return list;
+}
+
 static void install_builtin(Env *env, const char *name, BuiltinFunc fn) {
     env_define(env, name, make_builtin(fn));
 }
@@ -465,6 +490,7 @@ static void init_builtins(Env *env) {
     install_builtin(env, ">=", builtin_gte);
     install_builtin(env, "gc", builtin_gc);
     install_builtin(env, "gc-threshold", builtin_gc_threshold);
+    install_builtin(env, "gc-stats", builtin_gc_stats);
 }
 
 static void runtime_init(void) {
@@ -716,28 +742,105 @@ static char *read_line(void) {
     return buffer;
 }
 
+static void append_line(char **buffer, size_t *len, size_t *capacity, const char *line) {
+    size_t line_len = strlen(line);
+    size_t needed = *len + line_len + 2;
+    if (needed > *capacity) {
+        size_t new_cap = *capacity ? *capacity : 128;
+        while (new_cap < needed) new_cap *= 2;
+        char *tmp = realloc(*buffer, new_cap);
+        if (!tmp) {
+            fprintf(stderr, "Out of memory while reading input\n");
+            exit(1);
+        }
+        *buffer = tmp;
+        *capacity = new_cap;
+    }
+    memcpy(*buffer + *len, line, line_len);
+    *len += line_len;
+    (*buffer)[(*len)++] = '\n';
+    (*buffer)[*len] = '\0';
+}
+
+static int buffer_has_content(const char *buffer) {
+    if (!buffer) return 0;
+    for (const char *p = buffer; *p; ++p) {
+        if (!isspace((unsigned char)*p)) return 1;
+    }
+    return 0;
+}
+
+int form_needs_more_input(const char *buffer) {
+    if (!buffer) return 0;
+    int depth = 0;
+    int in_string = 0;
+    int escaping = 0;
+    for (const char *p = buffer; *p; ++p) {
+        char c = *p;
+        if (in_string) {
+            if (escaping) {
+                escaping = 0;
+            } else if (c == '\\') {
+                escaping = 1;
+            } else if (c == '"') {
+                in_string = 0;
+            }
+            continue;
+        }
+        if (c == '"') {
+            in_string = 1;
+            continue;
+        }
+        if (c == ';') {
+            while (*p && *p != '\n') p++;
+            if (!*p) break;
+            continue;
+        }
+        if (c == '(') depth++;
+        else if (c == ')') {
+            if (depth > 0) depth--;
+        }
+    }
+    return depth > 0 || in_string;
+}
+
 static void repl(void) {
     printf("Minimalisp REPL. Press Ctrl-D to exit.\n");
+    char *form_buffer = NULL;
+    size_t buf_len = 0;
+    size_t buf_capacity = 0;
     while (1) {
-        printf("ml> ");
+        printf(buf_len ? "...> " : "ml> ");
         fflush(stdout);
         char *line = read_line();
         if (!line) {
             printf("\n");
             break;
         }
-        if (line[0] == '\0') {
+        if (line[0] == '\0' && buf_len == 0) {
             free(line);
             continue;
         }
+        append_line(&form_buffer, &buf_len, &buf_capacity, line);
+        free(line);
+        if (!buffer_has_content(form_buffer)) {
+            buf_len = 0;
+            if (form_buffer) form_buffer[0] = '\0';
+            continue;
+        }
+        if (form_needs_more_input(form_buffer)) {
+            continue;
+        }
         int had_error = 0;
-        Value *value = eval_source(line, &had_error);
+        Value *value = eval_source(form_buffer, &had_error);
         if (!had_error) {
             print_value(value);
             printf("\n");
         }
-        free(line);
+        buf_len = 0;
+        if (form_buffer) form_buffer[0] = '\0';
     }
+    free(form_buffer);
 }
 
 static char *read_file(const char *path) {
@@ -768,14 +871,49 @@ static char *read_file(const char *path) {
 #include <emscripten.h>
 EMSCRIPTEN_KEEPALIVE
 #endif
-double eval(const char *src) {
+static void print_value_to_buffer(char *buffer, size_t size, Value *value) {
+    if (size == 0) return;
+    buffer[0] = '\0';
+    
+    if (value->type == VAL_NUMBER) {
+        snprintf(buffer, size, "%g", value->number);
+    } else if (value->type == VAL_SYMBOL) {
+        snprintf(buffer, size, "%s", value->symbol);
+    } else if (value->type == VAL_PAIR) {
+        // Simplified list printing for buffer
+        snprintf(buffer, size, "(...)"); 
+    } else if (value->type == VAL_NIL) {
+        snprintf(buffer, size, "()");
+    } else if (value->type == VAL_BUILTIN) {
+        snprintf(buffer, size, "#<builtin>");
+    } else if (value->type == VAL_LAMBDA) {
+        snprintf(buffer, size, "#<lambda>");
+    }
+}
+
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+EMSCRIPTEN_KEEPALIVE
+#endif
+const char* eval(const char *src) {
+    static char output_buffer[1024];
+    output_buffer[0] = '\0';
+    
     int had_error = 0;
     Value *value = eval_source(src, &had_error);
-    if (had_error || !value || value->type != VAL_NUMBER) {
-        runtime_error("Expression did not evaluate to a number");
-        return 0.0;
+    
+    if (had_error) {
+        snprintf(output_buffer, sizeof(output_buffer), "Error");
+        return output_buffer;
     }
-    return value->number;
+    
+    if (!value) {
+        snprintf(output_buffer, sizeof(output_buffer), "nil");
+        return output_buffer;
+    }
+    
+    print_value_to_buffer(output_buffer, sizeof(output_buffer), value);
+    return output_buffer;
 }
 
 #ifndef __EMSCRIPTEN__
@@ -804,4 +942,6 @@ int main(int argc, char **argv) {
     printf("\n");
     return 0;
 }
+#else
+int main() { return 0; }
 #endif
