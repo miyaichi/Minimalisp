@@ -176,6 +176,12 @@ static void gc_sweep(void) {
     }
 }
 
+static void ms_write_barrier(void *owner, void *child) {
+    (void)owner;
+    (void)child;
+    // Mark-sweep doesn't require a remembered set; barrier is a no-op.
+}
+
 static void ms_collect(void) {
     if (!gc_initialized || gc_collecting) return;
     gc_collecting = 1;
@@ -229,6 +235,7 @@ const GcBackend *gc_mark_sweep_backend(void) {
         ms_mark_ptr,
         ms_add_root,
         ms_remove_root,
+        ms_write_barrier,
         ms_collect,
         ms_free,
         ms_set_threshold,

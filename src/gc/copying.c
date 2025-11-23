@@ -242,6 +242,7 @@ const GcBackend *gc_copying_backend(void) {
         copy_mark_ptr,
         copy_add_root,
         copy_remove_root,
+        NULL,
         copy_collect,
         copy_free,
         copy_set_threshold,

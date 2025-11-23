@@ -51,6 +51,13 @@ void gc_remove_root(void **slot) {
     gc_backend->remove_root(slot);
 }
 
+void gc_write_barrier(void *owner, void *child) {
+    ensure_backend();
+    if (gc_backend->write_barrier) {
+        gc_backend->write_barrier(owner, child);
+    }
+}
+
 void gc_collect(void) {
     ensure_backend();
     gc_backend->collect();
