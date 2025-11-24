@@ -920,6 +920,9 @@ static int buffer_has_content(const char *buffer) {
     return 0;
 }
 
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+#endif
 int form_needs_more_input(const char *buffer) {
     if (!buffer) return 0;
     int depth = 0;
