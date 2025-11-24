@@ -70,6 +70,22 @@ static int eval_jmp_active = 0;
 static Env *global_env = NULL;
 static int runtime_initialized = 0;
 
+#define MAX_TEMP_ROOTS 4096
+static Value *temp_roots[MAX_TEMP_ROOTS];
+static int temp_root_sp = 0;
+
+static void push_root(Value *v) {
+    if (temp_root_sp >= MAX_TEMP_ROOTS) {
+        fprintf(stderr, "Error: Stack overflow (temp roots)\n");
+        exit(1);
+    }
+    temp_roots[temp_root_sp++] = v;
+}
+
+static void pop_root(void) {
+    if (temp_root_sp > 0) temp_root_sp--;
+}
+
 static void runtime_error(const char *fmt, ...);
 static void print_value(Value *value);
 static void print_pair(Value *value);
@@ -736,6 +752,13 @@ static void runtime_init(void) {
     gc_init();
     global_env = env_new(NULL);
     gc_add_root((void**)&global_env);
+    
+    // Register temporary roots
+    for (int i = 0; i < MAX_TEMP_ROOTS; ++i) {
+        temp_roots[i] = NIL;
+        gc_add_root((void**)&temp_roots[i]);
+    }
+    
     init_builtins(global_env);
     runtime_initialized = 1;
 }
@@ -804,19 +827,26 @@ static Value *eval_value(Value *expr, Env *env) {
                 }
             }
             // General application
+            int sp_start = temp_root_sp;
             Value *operator = eval_value(op, env);
+            push_root(operator);
+            
             Value *arg_values[MAX_ARGS];
             int argc = 0;
             Value *arg_list = expr->cdr;
             while (!is_nil(arg_list)) {
                 if (arg_list->type != VAL_PAIR) runtime_error("Malformed argument list");
                 if (argc >= MAX_ARGS) runtime_error("Too many arguments");
-                arg_values[argc++] = eval_value(arg_list->car, env);
+                Value *val = eval_value(arg_list->car, env);
+                arg_values[argc++] = val;
+                push_root(val);
                 arg_list = arg_list->cdr;
             }
+            
+            Value *result = NIL;
             if (!operator) runtime_error("Attempt to call nil");
             if (operator->type == VAL_BUILTIN) {
-                return operator->builtin(arg_values, argc, env);
+                result = operator->builtin(arg_values, argc, env);
             } else if (operator->type == VAL_LAMBDA) {
                 Env *call_env = env_new(operator->env ? operator->env : env);
                 Value *param_list = operator->params;
@@ -830,11 +860,13 @@ static Value *eval_value(Value *expr, Env *env) {
                     param_list = param_list->cdr;
                 }
                 if (index != argc) runtime_error("Too many arguments supplied");
-                return eval_sequence(operator->body, call_env);
+                result = eval_sequence(operator->body, call_env);
             } else {
                 runtime_error("Attempt to call non-procedure");
             }
-            return NIL;
+            
+            temp_root_sp = sp_start;
+            return result;
         }
         default:
             runtime_error("Cannot evaluate expression");
@@ -860,10 +892,14 @@ static Value *eval_source(const char *src, int *out_error) {
     if (setjmp(eval_jmp_buf) == 0) {
         input_ptr = src;
         cur_token = next_token();
+        temp_root_sp = 0; // Reset temp roots at top level
         while (cur_token.type != TOK_EOF) {
             Value *form = read_form();
+            push_root(form);
             form = desugar(form);
+            temp_roots[temp_root_sp - 1] = form; // Update root with desugared form
             result = eval_value(form, global_env);
+            pop_root();
         }
         if (out_error) *out_error = 0;
     } else {
