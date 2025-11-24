@@ -3,10 +3,13 @@
 #include <stdio.h>
 #include <string.h>
 
+// Nursery (young generation) size in bytes. Survivors that reach PROMOTE_AGE
+// are copied into the old generation managed by mark-sweep.
 #define DEFAULT_NURSERY_SIZE (512 * 1024)
 #define PROMOTE_AGE 2
 #define OLD_GROWTH_FACTOR 2.0
 
+// Headers stored in the nursery (copying semi-space).
 typedef struct NurseryHeader {
     size_t size;
     gc_trace_func trace;
@@ -14,6 +17,7 @@ typedef struct NurseryHeader {
     unsigned char age;
 } NurseryHeader;
 
+// Headers stored in the old generation (mark-sweep list).
 typedef struct OldHeader {
     struct OldHeader *prev;
     struct OldHeader *next;
@@ -29,6 +33,8 @@ typedef struct {
 typedef struct {
     void **slot;
 } RememberedSlot;
+
+// Global state --------------------------------------------------------------
 
 static unsigned char *nursery_active = NULL;
 static unsigned char *nursery_inactive = NULL;
