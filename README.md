@@ -133,7 +133,7 @@ make            # produces web/interpreter.js + .wasm
 python3 -m http.server 8080 --directory web
 ```
 
-Open `http://localhost:8080/` to use the bundled `web/index.html` harness that loads `interpreter.js` and lets you run Minimalisp programs in the browser.
+Open `http://localhost:8080/` to use the bundled `web/index.html` harness that loads `interpreter.js`, lets you pick a GC backend (mark-sweep / copying / generational), run programs, and inspect the heap. The Canvas view color-codes objects (numbers, cons cells, lambdas, bindings, etc.) so you can watch mark-sweep fragmentation or copying/Generational compaction in real time. Use “Auto snapshot” to refresh the view while your program allocates.
 
 ### Visualization Dashboard
 

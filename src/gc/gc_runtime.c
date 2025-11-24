@@ -2,11 +2,21 @@
 #include "gc_backend.h"
 #include <stdlib.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 
 static const GcBackend *gc_backend = NULL;
+static char backend_override[32];
+static int backend_override_set = 0;
 
 static const GcBackend *select_backend(void) {
-    const char *env = getenv("GC_BACKEND");
+    const char *env = NULL;
+    if (backend_override_set) {
+        env = backend_override;
+    } else {
+        env = getenv("GC_BACKEND");
+    }
     if (env) {
         if (strcmp(env, "copy") == 0 || strcmp(env, "copying") == 0 || strcmp(env, "semispace") == 0) {
             return gc_copying_backend();
@@ -123,3 +133,13 @@ size_t gc_heap_snapshot(GcObjectInfo *out, size_t capacity) {
     if (!gc_backend->heap_snapshot) return 0;
     return gc_backend->heap_snapshot(out, capacity);
 }
+
+#ifdef __EMSCRIPTEN__
+EMSCRIPTEN_KEEPALIVE
+void gc_set_backend_env(const char *name) {
+    if (!name) return;
+    strncpy(backend_override, name, sizeof(backend_override) - 1);
+    backend_override[sizeof(backend_override) - 1] = '\0';
+    backend_override_set = 1;
+}
+#endif
