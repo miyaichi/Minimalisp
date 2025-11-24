@@ -26,7 +26,7 @@
 - Minimal Lisp syntax with numbers, symbols, quoting (`'`/`quote`), and flexible list literals via `cons`/`list`.
 - Primitive list toolkit plus user‑defined procedures: `define`, `lambda`, `if`, and `begin` provide recursion and sequencing.
 - Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
-- Automatic mark-and-sweep garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
+- Automatic garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
 - Abstract GC API (`include/gc.h` + `src/gc/*`) with swappable backends (mark‑sweep by default, copying GC via `GC_BACKEND=copying`).
 
@@ -99,7 +99,7 @@ ml> '(1 2 (+ 3 4))
 ./interpreter "(gc)"
 ```
 
-The `(gc)` builtin forces an immediate mark-and-sweep cycle. Automatic collections trigger when total allocations exceed the current threshold, which you can inspect or set (in bytes) via `(gc-threshold)` or `(gc-threshold 2000000)`.
+The `(gc)` builtin forces an immediate gaberge collection cycle. Automatic collections trigger when total allocations exceed the current threshold, which you can inspect or set (in bytes) via `(gc-threshold)` or `(gc-threshold 2000000)`.
 
 ### Selecting a GC backend
 
@@ -108,7 +108,7 @@ GC_BACKEND=copying ./interpreter "(print 'hello)"
 GC_BACKEND=copying make test-native
 ```
 
-Set `GC_BACKEND=copying` to run the semispace copying collector, or `GC_BACKEND=generational` to try the nursery (copying) + old-generation (mark-sweep) hybrid. Leaving the variable unset (or `mark-sweep`) falls back to the classic mark-and-sweep backend. Copying/Generational collectors use fixed semispace sizes; tweak the constants in `src/gc/copying.c` / `src/gc/generational.c` if you need more headroom.
+Set `GC_BACKEND=mark-sweep` to use the default mark-and-sweep collector, `GC_BACKEND=copying` to run the semispace copying collector, or `GC_BACKEND=generational` to try the nursery (copying) + old-generation (mark-sweep) hybrid. Leaving the variable unset (or `mark-sweep`) falls back to the classic mark-and-sweep backend. Copying/Generational collectors use fixed semispace sizes; tweak the constants in `src/gc/copying.c` / `src/gc/generational.c` if you need more headroom.
 
 ### Script Files
 
