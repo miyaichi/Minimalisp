@@ -97,6 +97,7 @@ static char *gc_copy_cstring(const char *text);
 static char *read_file(const char *path);
 static char *read_file_internal(const char *path, int warn_on_error);
 static void load_standard_library(void);
+static Value *builtin_load(Value **args, int argc, Env *env);
 
 static int is_digit(char c) {
     return c >= '0' && c <= '9';
@@ -386,6 +387,7 @@ static Value *env_lookup(Env *env, const char *name) {
 static Value *read_form(void);
 static Value *eval_value(Value *expr, Env *env);
 static Value *eval_sequence(Value *exprs, Env *env);
+static Value *eval_source(const char *src, int *out_error);
 
 static Value *read_list(void) {
     Value *head = NIL;
@@ -595,6 +597,26 @@ static Value *builtin_gc_stats(Value **args, int argc, Env *env) {
     return list;
 }
 
+static Value *builtin_load(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 1) runtime_error("load expects one argument");
+    Value *arg = args[0];
+    if (!arg || arg->type != VAL_SYMBOL || !arg->symbol) {
+        runtime_error("load expects a symbol filename");
+    }
+    char *contents = read_file(arg->symbol);
+    if (!contents) {
+        runtime_error("Failed to load %s", arg->symbol);
+    }
+    int had_error = 0;
+    Value *result = eval_source(contents, &had_error);
+    free(contents);
+    if (had_error) {
+        runtime_error("Error while loading %s", arg->symbol);
+    }
+    return result ? result : NIL;
+}
+
 static void install_builtin(Env *env, const char *name, BuiltinFunc fn) {
     env_define(env, name, make_builtin(fn));
 }
@@ -619,6 +641,7 @@ static void init_builtins(Env *env) {
     install_builtin(env, "gc", builtin_gc);
     install_builtin(env, "gc-threshold", builtin_gc_threshold);
     install_builtin(env, "gc-stats", builtin_gc_stats);
+    install_builtin(env, "load", builtin_load);
 }
 
 static void runtime_init(void) {

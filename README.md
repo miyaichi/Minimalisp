@@ -141,6 +141,8 @@ Result: ()
 
 Use the `-f` flag to evaluate any `.lisp` file; the bundled `hanoi.lisp` prints the sequence of moves for a 3-disk Tower of Hanoi run.
 
+The interpreter also exposes a `(load filename)` builtin (pass the filename as a symbol, e.g., `(load 'gc-demo-programs.lisp)`), which evaluates another file at runtime without restarting the REPL.
+
 ### GC Demo Programs
 
 `gc-demo-programs.lisp` bundles several GC-focused workloads:
