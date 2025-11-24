@@ -212,12 +212,26 @@ static Env *env_new(Env *parent) {
     return env;
 }
 
+static void binding_set_value(Binding *binding, Value *value) {
+    gc_write_barrier(binding, (void**)&binding->value, value);
+    binding->value = value;
+}
+
+static void binding_set_next(Binding *binding, Binding *next) {
+    gc_write_barrier(binding, (void**)&binding->next, next);
+    binding->next = next;
+}
+
+static void env_set_bindings(Env *env, Binding *bindings) {
+    gc_write_barrier(env, (void**)&env->bindings, bindings);
+    env->bindings = bindings;
+}
+
 static void env_define(Env *env, const char *name, Value *value) {
     Binding *b = env->bindings;
     while (b) {
         if (strcmp(b->name, name) == 0) {
-            gc_write_barrier(b, value);
-            b->value = value;
+            binding_set_value(b, value);
             return;
         }
         b = b->next;
@@ -225,11 +239,9 @@ static void env_define(Env *env, const char *name, Value *value) {
     Binding *binding = (Binding*)gc_allocate(sizeof(Binding));
     gc_set_trace(binding, trace_binding);
     binding->name = gc_copy_cstring(name);
-    gc_write_barrier(binding, value);
-    binding->value = value;
-    binding->next = env->bindings;
-    gc_write_barrier(env, binding);
-    env->bindings = binding;
+    binding_set_value(binding, value);
+    binding_set_next(binding, env->bindings);
+    env_set_bindings(env, binding);
 }
 
 static int env_set(Env *env, const char *name, Value *value) {
@@ -237,8 +249,7 @@ static int env_set(Env *env, const char *name, Value *value) {
         Binding *b = e->bindings;
         while (b) {
             if (strcmp(b->name, name) == 0) {
-                gc_write_barrier(b, value);
-                b->value = value;
+                binding_set_value(b, value);
                 return 1;
             }
             b = b->next;

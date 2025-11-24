@@ -29,8 +29,8 @@ void *gc_mark_ptr(void *ptr);
 void gc_add_root(void **slot);
 void gc_remove_root(void **slot);
 
-// Inform the GC that `owner` now references `child`.
-void gc_write_barrier(void *owner, void *child);
+// Inform the GC that `owner` now references `child` via `slot`.
+void gc_write_barrier(void *owner, void **slot, void *child);
 
 // Adjust/get the automatic GC threshold in bytes.
 void gc_set_threshold(size_t bytes);

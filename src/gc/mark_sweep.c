@@ -176,8 +176,9 @@ static void gc_sweep(void) {
     }
 }
 
-static void ms_write_barrier(void *owner, void *child) {
+static void ms_write_barrier(void *owner, void **slot, void *child) {
     (void)owner;
+    (void)slot;
     (void)child;
     // Mark-sweep doesn't require a remembered set; barrier is a no-op.
 }

@@ -10,7 +10,7 @@ typedef struct GcBackend {
     void *(*mark_ptr)(void *ptr);
     void (*add_root)(void **slot);
     void (*remove_root)(void **slot);
-    void (*write_barrier)(void *owner, void *child);
+    void (*write_barrier)(void *owner, void **slot, void *child);
     void (*collect)(void);
     void (*free)(void *ptr);
     void (*set_threshold)(size_t bytes);
@@ -24,5 +24,6 @@ typedef struct GcBackend {
 
 const GcBackend *gc_mark_sweep_backend(void);
 const GcBackend *gc_copying_backend(void);
+const GcBackend *gc_generational_backend(void);
 
 #endif
