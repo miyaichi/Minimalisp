@@ -1,3 +1,4 @@
+// generational.c - generational GC backend
 #include "gc_backend.h"
 #include <stdlib.h>
 #include <stdio.h>
