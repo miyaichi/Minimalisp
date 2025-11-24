@@ -1,10 +1,12 @@
-(define (null? x)
+(define (null? x)       ; true iff x is ()
   (if x '() 't))
 
 (define (not x)
   (if x '() 't))
 
 (define (identity x) x)
+
+; Classic list helpers (mirror Scheme small primitives)
 
 (define (append xs ys)
   (if (null? xs)
@@ -16,20 +18,20 @@
       acc
       (reverse-iter (cdr src) (cons (car src) acc))))
 
-(define (reverse xs)
+(define (reverse xs)    ; uses the iterative helper defined above
   (reverse-iter xs '()))
 
-(define (length xs)
+(define (length xs)     ; compute list length
   (if (null? xs)
       0
       (+ 1 (length (cdr xs)))))
 
-(define (foldl fn acc xs)
+(define (foldl fn acc xs)   ; left fold
   (if (null? xs)
       acc
       (foldl fn (fn acc (car xs)) (cdr xs))))
 
-(define (foldr fn acc xs)
+(define (foldr fn acc xs)   ; right fold
   (if (null? xs)
       acc
       (fn (car xs) (foldr fn acc (cdr xs)))))

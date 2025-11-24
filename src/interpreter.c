@@ -103,8 +103,18 @@ static int is_digit(char c) {
 }
 
 static void skip_whitespace(void) {
-    while (*input_ptr && (*input_ptr == ' ' || *input_ptr == '\t' || *input_ptr == '\n' || *input_ptr == '\r')) {
-        input_ptr++;
+    while (*input_ptr) {
+        if (*input_ptr == ' ' || *input_ptr == '\t' || *input_ptr == '\n' || *input_ptr == '\r') {
+            input_ptr++;
+            continue;
+        }
+        if (*input_ptr == ';') {
+            while (*input_ptr && *input_ptr != '\n' && *input_ptr != '\r') {
+                input_ptr++;
+            }
+            continue;
+        }
+        break;
     }
 }
 
