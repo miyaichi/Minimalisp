@@ -1,5 +1,7 @@
 #include "gc.h"
 #include "gc_backend.h"
+#include <stddef.h>
+#include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 #ifdef __EMSCRIPTEN__
@@ -132,6 +134,43 @@ size_t gc_heap_snapshot(GcObjectInfo *out, size_t capacity) {
     ensure_backend();
     if (!gc_backend->heap_snapshot) return 0;
     return gc_backend->heap_snapshot(out, capacity);
+}
+
+size_t gc_heap_snapshot_flat(uint32_t *out, size_t capacity) {
+    ensure_backend();
+    if (!gc_backend->heap_snapshot || !out || capacity == 0) return 0;
+    size_t entry_count = capacity;
+    GcObjectInfo *buffer = (GcObjectInfo*)malloc(sizeof(GcObjectInfo) * entry_count);
+    if (!buffer) return 0;
+    size_t written = gc_backend->heap_snapshot(buffer, entry_count);
+    for (size_t i = 0; i < written; ++i) {
+        out[i * 4 + 0] = (uint32_t)buffer[i].addr;
+        out[i * 4 + 1] = (uint32_t)buffer[i].size;
+        out[i * 4 + 2] = (uint32_t)buffer[i].generation;
+        out[i * 4 + 3] = (uint32_t)buffer[i].tag;
+    }
+    free(buffer);
+    return written;
+}
+
+size_t gc_heap_snapshot_entry_size(void) {
+    return sizeof(GcObjectInfo);
+}
+
+size_t gc_heap_snapshot_addr_offset(void) {
+    return offsetof(GcObjectInfo, addr);
+}
+
+size_t gc_heap_snapshot_size_offset(void) {
+    return offsetof(GcObjectInfo, size);
+}
+
+size_t gc_heap_snapshot_generation_offset(void) {
+    return offsetof(GcObjectInfo, generation);
+}
+
+size_t gc_heap_snapshot_tag_offset(void) {
+    return offsetof(GcObjectInfo, tag);
 }
 
 #ifdef __EMSCRIPTEN__

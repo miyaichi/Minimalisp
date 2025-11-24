@@ -76,6 +76,12 @@ double gc_get_current_bytes(void);
 
 // Snapshot current heap objects. Returns number of entries written.
 size_t gc_heap_snapshot(GcObjectInfo *out, size_t capacity);
+size_t gc_heap_snapshot_flat(uint32_t *out, size_t capacity);
+size_t gc_heap_snapshot_entry_size(void);
+size_t gc_heap_snapshot_addr_offset(void);
+size_t gc_heap_snapshot_size_offset(void);
+size_t gc_heap_snapshot_generation_offset(void);
+size_t gc_heap_snapshot_tag_offset(void);
 
 // Perform a garbage collection cycle.
 void gc_collect(void);
