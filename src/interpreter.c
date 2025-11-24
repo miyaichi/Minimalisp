@@ -94,6 +94,9 @@ static void trace_env(void *obj);
 static void trace_binding(void *obj);
 static char *gc_alloc_buffer(size_t size);
 static char *gc_copy_cstring(const char *text);
+static char *read_file(const char *path);
+static char *read_file_internal(const char *path, int warn_on_error);
+static void load_standard_library(void);
 
 static int is_digit(char c) {
     return c >= '0' && c <= '9';
@@ -622,6 +625,7 @@ static void runtime_init(void) {
     
     init_builtins(global_env);
     runtime_initialized = 1;
+    load_standard_library();
 }
 
 static Value *eval_value(Value *expr, Env *env) {
@@ -710,6 +714,7 @@ static Value *eval_value(Value *expr, Env *env) {
                 result = operator->builtin(arg_values, argc, env);
             } else if (operator->type == VAL_LAMBDA) {
                 Env *call_env = env_new(operator->env ? operator->env : env);
+                push_root((Value*)call_env);
                 Value *param_list = operator->params;
                 int index = 0;
                 while (!is_nil(param_list)) {
@@ -722,6 +727,7 @@ static Value *eval_value(Value *expr, Env *env) {
                 }
                 if (index != argc) runtime_error("Too many arguments supplied");
                 result = eval_sequence(operator->body, call_env);
+                pop_root();
             } else {
                 runtime_error("Attempt to call non-procedure");
             }
@@ -977,10 +983,10 @@ static void repl(void) {
     free(form_buffer);
 }
 
-static char *read_file(const char *path) {
+static char *read_file_internal(const char *path, int warn_on_error) {
     FILE *f = fopen(path, "rb");
     if (!f) {
-        fprintf(stderr, "Failed to open %s\n", path);
+        if (warn_on_error) fprintf(stderr, "Failed to open %s\n", path);
         return NULL;
     }
     fseek(f, 0, SEEK_END);
@@ -999,6 +1005,39 @@ static char *read_file(const char *path) {
     buffer[size] = '\0';
     fclose(f);
     return buffer;
+}
+
+static char *read_file(const char *path) {
+    return read_file_internal(path, 1);
+}
+
+static void load_standard_library(void) {
+    static int loaded = 0;
+    if (loaded) return;
+    loaded = 1;
+    const char *paths[] = {
+        "standard-lib.lisp",
+#ifdef __EMSCRIPTEN__
+        "/standard-lib.lisp",
+#endif
+        NULL
+    };
+    char *contents = NULL;
+    for (int i = 0; paths[i]; ++i) {
+        contents = read_file_internal(paths[i], 0);
+        if (contents) break;
+    }
+    if (!contents) {
+        fprintf(stderr, "Warning: standard-lib.lisp not found; continuing without standard library\n");
+        return;
+    }
+    int had_error = 0;
+    Value *value = eval_source(contents, &had_error);
+    (void)value;
+    if (had_error) {
+        fprintf(stderr, "Warning: Failed to load standard-lib.lisp\n");
+    }
+    free(contents);
 }
 
 static void print_value_to_buffer(char *buffer, size_t size, Value *value) {

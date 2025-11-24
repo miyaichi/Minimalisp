@@ -14,9 +14,9 @@ NATIVE_TARGET = interpreter
 
 all: $(WASM_TARGET)
 
-$(WASM_TARGET): $(SRC)
+$(WASM_TARGET): $(SRC) standard-lib.lisp
 	mkdir -p $(WASM_DIR) $(EM_CACHE)
-	EM_CACHE=$(EM_CACHE) $(WASM_CC) $(WASM_CFLAGS) -o $@ $^
+	EM_CACHE=$(EM_CACHE) $(WASM_CC) $(WASM_CFLAGS) --embed-file standard-lib.lisp -o $@ $^
 
 native: $(NATIVE_TARGET)
 

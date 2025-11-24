@@ -25,6 +25,7 @@
 
 - Minimal Lisp syntax with numbers, symbols, quoting (`'`/`quote`), and flexible list literals via `cons`/`list`.
 - Primitive list toolkit plus user‑defined procedures: `define`, `lambda`, `if`, and `begin` provide recursion and sequencing.
+- Shared Lisp standard library (`standard-lib.lisp`) loaded at startup in both native and WASM builds so helpers such as `append`, `map`, `foldl`, and predicates live in Lisp space.
 - Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
 - Automatic garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
@@ -48,7 +49,7 @@ source /path/to/emsdk_env.sh
 make          # builds web/interpreter.js + .wasm
 ```
 
-`make` uses a repo-local `.emscripten-cache/` (created automatically) so the build works even in sandboxed environments. Serve the `web/` directory with any static file server to exercise the browser REPL.
+`make` uses a repo-local `.emscripten-cache/` (created automatically) so the build works even in sandboxed environments. Serve the `web/` directory with any static file server to exercise the browser REPL. The resulting `.data` bundle includes `standard-lib.lisp`, so rerun `make` after editing that file to update the browser build.
 
 ### Compile native binary (optional)
 
@@ -56,6 +57,8 @@ make          # builds web/interpreter.js + .wasm
 make native
 # override compiler via NATIVE_CC=clang make native
 ```
+
+The native binary reads `standard-lib.lisp` from disk on each launch, so you can tweak the library without rebuilding.
 
 ### Native smoke tests
 
@@ -92,6 +95,10 @@ ml> '(1 2 (+ 3 4))
 ```
 
 `begin` lets you chain definitions with expressions inside a single invocation.
+
+### Standard Library
+
+Every invocation loads `standard-lib.lisp` before user code. The file defines pure-Lisp helpers such as `append`, `reverse`, `map`, `foldl`/`foldr`, `filter`, `range`, and predicates like `null?`, `not`, `any`, and `all`. Editing `standard-lib.lisp` immediately affects native runs because the interpreter re-reads the file on startup. The same file is embedded into the WASM build (via `--embed-file standard-lib.lisp`), so rebuild the WASM target after modifying it to refresh the browser-side runtime.
 
 ### Garbage Collection Controls
 
