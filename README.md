@@ -135,29 +135,6 @@ python3 -m http.server 8080 --directory web
 
 Open `http://localhost:8080/` to use the bundled `web/index.html` harness that loads `interpreter.js`, lets you pick a GC backend (mark-sweep / copying / generational), run programs, and inspect the heap. The Canvas view color-codes objects (numbers, cons cells, lambdas, bindings, etc.) so you can watch mark-sweep fragmentation or copying/Generational compaction in real time. Use “Auto snapshot” to refresh the view while your program allocates.
 
-### Visualization Dashboard
-
-Minimalisp includes a web-based dashboard to visualize Garbage Collection in real-time.
-
-1.  **Build**:
-    ```sh
-    make
-    ```
-    This generates `interpreter.js` and `interpreter.wasm`.
-
-2.  **Run Server**:
-    ```sh
-    python3 -m http.server
-    ```
-
-3.  **Open Browser**:
-    Navigate to [http://localhost:8000](http://localhost:8000).
-
-**Features**:
-- **Interactive REPL**: Execute Lisp code directly in the browser. Supports multi-line input.
-- **Real-time Monitoring**: Watch memory usage (allocated vs current) and GC cycles update live.
-- **Stress Test**: Run an automated allocation loop to observe GC behavior under load.
-
 ---
 
 ## Garbage Collector
