@@ -200,7 +200,9 @@
       }
 
       Module['onRuntimeInitialized'] = () => {
-        evalFunc = Module.cwrap('eval', 'number', ['string']);
+        Module.print = (text) => logLine(text, 'output');
+        Module.printErr = (text) => logLine(text, 'error');
+        evalFunc = Module.cwrap('eval', 'string', ['string']);
         snapshotFunc = Module.cwrap('gc_heap_snapshot', 'number', ['number', 'number']);
         backendSetter = Module.cwrap('gc_set_backend_env', null, ['string']);
         backendSetter(currentBackend);
