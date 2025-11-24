@@ -17,23 +17,18 @@
 (define (reverse xs)
   (reverse-iter xs '()))
 
+(define (abs x)
+  (if (< x 0) (- 0 x) x))
+
 (define (emit-solution solution)
   (print solution)
   (list solution))
 
-(define (conflict? column value offset)
-  (if (= column value)
-      t
-      (if (= column (+ value offset))
-          t
-          (if (= column (- value offset))
-              t
-              '()))))
-
 (define (safe? column queens offset)
   (if (null? queens)
       t
-      (if (conflict? column (car queens) offset)
+      (if (if (= column (car queens)) t
+              (if (= (abs (- column (car queens))) offset) t '()))
           '()
           (safe? column (cdr queens) (+ offset 1)))))
 
