@@ -94,7 +94,6 @@ static void trace_env(void *obj);
 static void trace_binding(void *obj);
 static char *gc_alloc_buffer(size_t size);
 static char *gc_copy_cstring(const char *text);
-static Value *desugar(Value *expr);
 
 static int is_digit(char c) {
     return c >= '0' && c <= '9';
@@ -309,27 +308,6 @@ static void append_value_to_buffer(char *buffer, size_t size, Value *value) {
     }
 }
 
-static int is_symbol_name(Value *value, const char *name) {
-    return value && value->type == VAL_SYMBOL && value->symbol && strcmp(value->symbol, name) == 0;
-}
-
-static int gensym_counter = 0;
-
-static Value *make_gensym(const char *prefix) {
-    char name[32];
-    snprintf(name, sizeof(name), "%s%d", prefix, gensym_counter++);
-    return make_symbol_copy(name);
-}
-
-static Value *desugar(Value *expr);
-static Value *desugar_list(Value *list);
-static Value *desugar_let(Value *expr);
-static Value *desugar_and(Value *args);
-static Value *desugar_or(Value *args);
-static Value *desugar_cond(Value *clauses);
-static Value *desugar_sequence(Value *exprs);
-
-
 #ifdef __EMSCRIPTEN__
 static void wasm_emit_line(const char *line) {
     EM_ASM({ Module.print(UTF8ToString($0)); }, line);
@@ -431,123 +409,6 @@ static Value *read_form(void) {
         runtime_error("Unexpected token while reading");
         return NIL;
     }
-}
-
-static Value *desugar(Value *expr) {
-    if (!expr) return expr;
-    if (expr->type != VAL_PAIR) return expr;
-    Value *head = expr->car;
-    if (is_symbol_name(head, "quote")) return expr;
-    if (is_symbol_name(head, "let")) return desugar(desugar_let(expr));
-    if (is_symbol_name(head, "and")) return desugar(desugar_and(expr->cdr));
-    if (is_symbol_name(head, "or")) return desugar(desugar_or(expr->cdr));
-    if (is_symbol_name(head, "cond")) return desugar(desugar_cond(expr->cdr));
-    if (is_symbol_name(head, "lambda")) {
-        Value *params = expr->cdr ? expr->cdr->car : NIL;
-        Value *body = expr->cdr ? expr->cdr->cdr : NIL;
-        Value *new_body = desugar_list(body);
-        if (new_body == body) return expr;
-        return make_pair(head, make_pair(params, new_body));
-    }
-    if (is_symbol_name(head, "define")) {
-        Value *target = expr->cdr ? expr->cdr->car : NIL;
-        Value *value_exprs = expr->cdr ? expr->cdr->cdr : NIL;
-        Value *new_values = desugar_list(value_exprs);
-        if (new_values == value_exprs) return expr;
-        return make_pair(head, make_pair(target, new_values));
-    }
-    Value *new_head = desugar(head);
-    Value *new_tail = desugar_list(expr->cdr);
-    if (new_head == head && new_tail == expr->cdr) return expr;
-    return make_pair(new_head, new_tail);
-}
-
-static Value *desugar_list(Value *list) {
-    if (is_nil(list)) return list;
-    if (!list || list->type != VAL_PAIR) return desugar(list);
-    Value *new_head = desugar(list->car);
-    Value *new_tail = desugar_list(list->cdr);
-    if (new_head == list->car && new_tail == list->cdr) return list;
-    return make_pair(new_head, new_tail);
-}
-
-static Value *desugar_sequence(Value *exprs) {
-    if (is_nil(exprs)) return NIL;
-    if (exprs->type != VAL_PAIR) return desugar(exprs);
-    if (is_nil(exprs->cdr)) return desugar(exprs->car);
-    return make_pair(make_symbol_copy("begin"), desugar_list(exprs));
-}
-
-static Value *desugar_let(Value *expr) {
-    Value *bindings = expr->cdr ? expr->cdr->car : NIL;
-    Value *body = expr->cdr ? expr->cdr->cdr : NIL;
-    Value *params = NIL; Value **param_tail = &params;
-    Value *args = NIL; Value **arg_tail = &args;
-    Value *cursor = bindings;
-    while (!is_nil(cursor)) {
-        if (cursor->type != VAL_PAIR) break;
-        Value *binding = cursor->car;
-        Value *name = binding ? binding->car : NIL;
-        Value *value_expr = (binding && binding->cdr) ? binding->cdr->car : NIL;
-        *param_tail = make_pair(name, NIL);
-        param_tail = &(*param_tail)->cdr;
-        *arg_tail = make_pair(desugar(value_expr), NIL);
-        arg_tail = &(*arg_tail)->cdr;
-        cursor = binding ? cursor->cdr : NIL;
-    }
-    Value *lambda = make_pair(make_symbol_copy("lambda"),
-                              make_pair(params, desugar_list(body)));
-    return make_pair(lambda, args);
-}
-
-static Value *desugar_and(Value *args) {
-    if (is_nil(args)) return make_symbol_copy("t");
-    if (is_nil(args->cdr)) return desugar(args->car);
-    Value *tmp = make_gensym("__and");
-    Value *binding = make_pair(tmp, make_pair(desugar(args->car), NIL));
-    Value *bindings = make_pair(binding, NIL);
-    Value *rest = desugar_and(args->cdr);
-    Value *if_expr = make_pair(make_symbol_copy("if"),
-                               make_pair(tmp,
-                                         make_pair(rest,
-                                                   make_pair(tmp, NIL))));
-    Value *let_expr = make_pair(make_symbol_copy("let"),
-                                make_pair(bindings, make_pair(if_expr, NIL)));
-    return let_expr;
-}
-
-static Value *desugar_or(Value *args) {
-    if (is_nil(args)) return NIL;
-    if (is_nil(args->cdr)) return desugar(args->car);
-    Value *tmp = make_gensym("__or");
-    Value *binding = make_pair(tmp, make_pair(desugar(args->car), NIL));
-    Value *bindings = make_pair(binding, NIL);
-    Value *rest = desugar_or(args->cdr);
-    Value *if_expr = make_pair(make_symbol_copy("if"),
-                               make_pair(tmp,
-                                         make_pair(tmp,
-                                                   make_pair(rest, NIL))));
-    Value *let_expr = make_pair(make_symbol_copy("let"),
-                                make_pair(bindings, make_pair(if_expr, NIL)));
-    return let_expr;
-}
-
-static Value *desugar_cond(Value *clauses) {
-    if (is_nil(clauses)) return NIL;
-    if (clauses->type != VAL_PAIR) return desugar(clauses);
-    Value *clause = clauses->car;
-    Value *test = clause ? clause->car : NIL;
-    Value *rest = clause ? clause->cdr : NIL;
-    if (is_symbol_name(test, "else")) {
-        return desugar_sequence(rest);
-    }
-    Value *then_expr = desugar_sequence(rest);
-    Value *else_expr = desugar_cond(clauses->cdr);
-    Value *if_expr = make_pair(make_symbol_copy("if"),
-                               make_pair(desugar(test),
-                                         make_pair(then_expr,
-                                                   make_pair(else_expr ? else_expr : NIL, NIL))));
-    return if_expr;
 }
 
 static Value *builtin_add(Value **args, int argc, Env *env) {
@@ -896,8 +757,6 @@ static Value *eval_source(const char *src, int *out_error) {
         while (cur_token.type != TOK_EOF) {
             Value *form = read_form();
             push_root(form);
-            form = desugar(form);
-            temp_roots[temp_root_sp - 1] = form; // Update root with desugared form
             result = eval_value(form, global_env);
             pop_root();
         }

@@ -18,27 +18,31 @@
   (if (< x 0) (- 0 x) x))
 
 (define (safe? column queens offset)
-  (cond
-    ((null? queens) t)
-    ((or (= column (car queens))
-         (= (abs (- column (car queens))) offset)) '())
-    (else (safe? column (cdr queens) (+ offset 1)))))
+  (if (null? queens)
+      t
+      (if (= column (car queens))
+          '()
+          (if (= (abs (- column (car queens))) offset)
+              '()
+              (safe? column (cdr queens) (+ offset 1))))))
 
 (define (extend-columns queens row size col solutions)
   (if (> col size)
       solutions
-      (let ((next (cons col queens))
-            (new-col (+ col 1)))
-        (if (safe? col queens 1)
-            (extend-columns queens row size new-col
-                             (append (extend next (+ row 1) size) solutions))
-            (extend-columns queens row size new-col solutions)))))
+      ((lambda (next new-col)
+         (if (safe? col queens 1)
+             (extend-columns queens row size new-col
+                              (append (extend next (+ row 1) size) solutions))
+             (extend-columns queens row size new-col solutions)))
+       (cons col queens)
+       (+ col 1))))
 
 (define (extend queens row size)
   (if (> row size)
-      (let ((solution (reverse queens)))
-        (print solution)
-        (list solution))
+      ((lambda (solution)
+         (print solution)
+         (list solution))
+       (reverse queens))
       (extend-columns queens row size 1 '())))
 
 (define (n-queens size)
