@@ -70,7 +70,7 @@ static int eval_jmp_active = 0;
 static Env *global_env = NULL;
 static int runtime_initialized = 0;
 
-#define MAX_TEMP_ROOTS 4096
+#define MAX_TEMP_ROOTS 65536
 static Value *temp_roots[MAX_TEMP_ROOTS];
 static int temp_root_sp = 0;
 
