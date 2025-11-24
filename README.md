@@ -98,7 +98,14 @@ ml> '(1 2 (+ 3 4))
 
 ### Standard Library
 
-Every invocation loads `standard-lib.lisp` before user code. The file defines pure-Lisp helpers such as `append`, `reverse`, `map`, `foldl`/`foldr`, `filter`, `range`, and predicates like `null?`, `not`, `any`, and `all`. Editing `standard-lib.lisp` immediately affects native runs because the interpreter re-reads the file on startup. The same file is embedded into the WASM build (via `--embed-file standard-lib.lisp`), so rebuild the WASM target after modifying it to refresh the browser-side runtime.
+Every invocation loads `standard-lib.lisp` before user code. The file defines pure-Lisp helpers such as `append`, `reverse`, `map`, `foldl`/`foldr`, 
+`filter`, `range`, and predicates like `null?`, `not`, `any`, and `all`.
+
+**Native builds**: The interpreter reads `standard-lib.lisp` from disk on each startup, so you can modify it without rebuilding.
+
+**WASM builds**: The library is embedded via `--embed-file`, so you must run `make` after editing `standard-lib.lisp` to update the browser-side runtime.
+
+**Troubleshooting**: If you see "Warning: standard-lib.lisp not found", the interpreter will continue but standard functions will be unavailable. Ensure the file exists in the current directory or at `/standard-lib.lisp` for WASM.
 
 ### Garbage Collection Controls
 
