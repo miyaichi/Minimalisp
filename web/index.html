@@ -4,20 +4,65 @@
     <meta charset="utf-8" />
     <title>Minimalisp (WebAssembly)</title>
     <style>
-      body { font-family: monospace; background: #1e1e1e; color: #f0f0f0; padding: 1rem; display: grid; grid-template-columns: 1fr 1fr; grid-gap: 1rem; }
-      textarea { width: 100%; height: 10rem; }
-      button { padding: 0.5rem 1rem; margin-top: 0.5rem; }
-      pre { background: #111; padding: 0.5rem; min-height: 5rem; overflow: auto; }
-      canvas { width: 100%; height: 200px; border: 1px solid #444; background: #000; }
+      body {
+        font-family: 'Fira Mono', 'SFMono-Regular', Consolas, monospace;
+        background: #1e1e1e;
+        color: #f0f0f0;
+        margin: 0;
+        padding: 1rem;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        grid-gap: 1rem;
+        height: 100vh;
+        box-sizing: border-box;
+      }
       .column { display: flex; flex-direction: column; gap: 1rem; }
-      .toolbar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+      h1, h2 { margin: 0; }
+      .console {
+        background: #111;
+        border: 1px solid #333;
+        height: 280px;
+        overflow-y: auto;
+        padding: 0.5rem;
+      }
+      .console-line { white-space: pre-wrap; margin: 0.1rem 0; }
+      .console-line.input { color: #7ee787; }
+      .console-line.result { color: #79c0ff; }
+      .console-line.error { color: #ff6b6b; }
+      .console-line.info { color: #fbc02d; }
+      textarea {
+        width: 100%;
+        height: 6rem;
+        resize: vertical;
+        background: #0d1117;
+        color: #e6edf3;
+        border: 1px solid #30363d;
+        padding: 0.5rem;
+        box-sizing: border-box;
+      }
+      button, select, label { font-size: 0.9rem; }
+      button {
+        background: #238636;
+        color: #fff;
+        border: none;
+        padding: 0.4rem 0.9rem;
+        cursor: pointer;
+      }
+      button.secondary { background: #444; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      canvas { width: 100%; height: 220px; border: 1px solid #333; background: #000; }
+      .toolbar, .viz-toolbar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+      #legend span { margin-right: 1rem; }
     </style>
   </head>
   <body>
     <div class="column">
-      <h1>Minimalisp WASM REPL</h1>
-      <p>Build via <code>make</code> and serve the <code>web/</code> folder (e.g., <code>python3 -m http.server 8080 --directory web</code>).</p>
-      <textarea id="program">(print (+ 1 2 3))</textarea>
+      <div>
+        <h1>Minimalisp WASM Playground</h1>
+        <p>Shift+Enter inserts a newline. Press Enter or the Run button to evaluate in the embedded interpreter.</p>
+      </div>
+      <div class="console" id="replLog"></div>
+      <textarea id="replInput" spellcheck="false">(print (+ 1 2 3))</textarea>
       <div class="toolbar">
         <button id="runBtn">Run</button>
         <label>GC Backend:
@@ -27,23 +72,32 @@
             <option value="generational">generational</option>
           </select>
         </label>
-        <label><input type="checkbox" id="autoSnapshot" checked /> Auto snapshot</label>
-        <button id="snapshotBtn">Snapshot once</button>
+        <span class="hint">(Changing backend after execution requires a reload.)</span>
       </div>
-      <pre id="output">Output will appear here…</pre>
     </div>
     <div class="column">
       <h2>Heap Visualization</h2>
-      <canvas id="heapCanvas" width="600" height="200"></canvas>
-      <div id="legend">
-        <p>Legend: <span style="color:#6cf">Numbers</span>, <span style="color:#6f6">Pairs</span>, <span style="color:#fc3">Symbols</span>, <span style="color:#f69">Lambdas</span>, <span style="color:#f33">Other</span></p>
+      <div class="viz-toolbar">
+        <label><input type="checkbox" id="autoSnapshot" checked /> Auto snapshot</label>
+        <button id="snapshotBtn" class="secondary">Snapshot now</button>
       </div>
+      <canvas id="heapCanvas" width="640" height="220"></canvas>
+      <div id="legend">
+        <span style="color:#6cf">Number</span>
+        <span style="color:#fc3">Symbol</span>
+        <span style="color:#6f6">Pair</span>
+        <span style="color:#f69">Lambda</span>
+        <span style="color:#f33">Env</span>
+        <span style="color:#f93">Binding</span>
+        <span style="color:#9cf">String</span>
+      </div>
+      <p>The canvas maps the WASM linear memory, highlighting allocated objects. Copying/Generational GC compact nursery objects; mark-sweep tends to fragment over time.</p>
     </div>
     <script src="interpreter.js"></script>
     <script>
+      const replLog = document.getElementById('replLog');
+      const replInput = document.getElementById('replInput');
       const runBtn = document.getElementById('runBtn');
-      const output = document.getElementById('output');
-      const program = document.getElementById('program');
       const backendSelect = document.getElementById('backend');
       const autoSnapshotCheckbox = document.getElementById('autoSnapshot');
       const snapshotBtn = document.getElementById('snapshotBtn');
@@ -52,104 +106,129 @@
 
       const TAG_COLORS = {
         0: '#444',
-        1: '#6cf', // number
-        2: '#fc3', // symbol
-        3: '#6f6', // pair
-        4: '#f69', // lambda
-        5: '#c6f', // builtin
-        10: '#f33', // env
-        11: '#f93', // binding
-        12: '#9cf'  // strings
+        1: '#6cf',
+        2: '#fc3',
+        3: '#6f6',
+        4: '#f69',
+        5: '#c6f',
+        10: '#f33',
+        11: '#f93',
+        12: '#9cf'
       };
 
-      let evalFunc = null;
-      let ensureBackend = null;
-      let snapshotFunc = null;
-      let infoBuffer = null;
+      let evalFunc;
+      let backendSetter;
+      let snapshotFunc;
       let infoPtr = 0;
-      let infoCapacity = 2048; // number of entries
+      const snapshotCapacity = 2048; // entries
+      let backendLocked = false;
+      let currentBackend = backendSelect.value;
+      let autoSnapshotTimer = null;
 
-      function append(text) {
-        output.textContent += text + '\\n';
-        output.scrollTop = output.scrollHeight;
-      }
-
-      function setBackend(envValue) {
-        // Emscripten uses process.env at compile time; we emulate GC selection by
-        // calling Module['_GC_BACKEND'] setter (exposed via cwrap) that reads env.
-        if (!ensureBackend) return;
-        ensureBackend(envValue);
+      function logLine(text, type = 'output') {
+        const div = document.createElement('div');
+        div.className = `console-line ${type}`;
+        div.textContent = text;
+        replLog.appendChild(div);
+        replLog.scrollTop = replLog.scrollHeight;
       }
 
       function initHeapBuffer() {
-        if (!infoBuffer || infoBuffer.length !== infoCapacity * 4) {
-            infoBuffer = new Uint32Array(infoCapacity * 4);
-        }
         if (infoPtr === 0) {
-            infoPtr = Module._malloc(infoBuffer.byteLength);
+          infoPtr = Module._malloc(snapshotCapacity * 4 * 4);
         }
-      }
-
-      function snapshotHeap() {
-        if (!snapshotFunc) return;
-        initHeapBuffer();
-        const heapU32 = new Uint32Array(Module.HEAPU32.buffer, infoPtr, infoBuffer.length);
-        const count = snapshotFunc(infoPtr, infoCapacity);
-        const slice = heapU32.slice(0, count * 4);
-        drawHeap(slice, count);
       }
 
       function drawHeap(data, count) {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         const totalBytes = Module.HEAPU8.length;
         for (let i = 0; i < count; i++) {
-          const baseIndex = i * 4;
-          const addr = data[baseIndex];
-          const size = data[baseIndex + 1];
-          const generation = data[baseIndex + 2];
-          const tag = data[baseIndex + 3];
+          const base = i * 4;
+          const addr = data[base];
+          const size = data[base + 1];
+          const generation = data[base + 2];
+          const tag = data[base + 3];
           const color = TAG_COLORS[tag] || '#888';
-          const x = (addr % totalBytes) / totalBytes * canvas.width;
-          const width = Math.max(1, size / totalBytes * canvas.width);
-          const y = generation === 1 ? 20 : generation === 2 ? 100 : 160;
+          const x = ((addr % totalBytes) / totalBytes) * canvas.width;
+          const width = Math.max(1, (size / totalBytes) * canvas.width);
+          const y = generation === 1 ? 30 : generation === 2 ? 120 : 180;
           ctx.fillStyle = color;
-          ctx.fillRect(x, y, width, 20);
+          ctx.fillRect(x, y, width, 24);
         }
       }
 
-      let autoSnapshotTimer = null;
+      function snapshotHeap() {
+        if (!snapshotFunc) return;
+        initHeapBuffer();
+        const heapView = new Uint32Array(Module.HEAPU32.buffer, infoPtr, snapshotCapacity * 4);
+        const count = snapshotFunc(infoPtr, snapshotCapacity);
+        drawHeap(heapView, count);
+      }
+
       function updateAutoSnapshot() {
         if (autoSnapshotTimer) {
           clearInterval(autoSnapshotTimer);
           autoSnapshotTimer = null;
         }
         if (autoSnapshotCheckbox.checked) {
-          autoSnapshotTimer = setInterval(snapshotHeap, 500);
+          autoSnapshotTimer = setInterval(snapshotHeap, 600);
         }
+      }
+
+      function ensureBackendSelected() {
+        if (!backendSetter) return;
+        if (!backendLocked) {
+          backendSetter(backendSelect.value);
+          backendLocked = true;
+          currentBackend = backendSelect.value;
+        }
+      }
+
+      function runProgram() {
+        const code = replInput.value.trim();
+        if (!code) return;
+        logLine('ml> ' + code, 'input');
+        replInput.value = '';
+        try {
+          ensureBackendSelected();
+          const result = evalFunc(code);
+          logLine(String(result), 'result');
+        } catch (err) {
+          logLine(String(err), 'error');
+        }
+        snapshotHeap();
       }
 
       Module['onRuntimeInitialized'] = () => {
         evalFunc = Module.cwrap('eval', 'number', ['string']);
         snapshotFunc = Module.cwrap('gc_heap_snapshot', 'number', ['number', 'number']);
-        ensureBackend = Module.cwrap('gc_set_backend_env', null, ['string']); // to be implemented
+        backendSetter = Module.cwrap('gc_set_backend_env', null, ['string']);
+        backendSetter(currentBackend);
 
-        backendSelect.addEventListener('change', () => {
-          setBackend(backendSelect.value);
-        });
-        runBtn.addEventListener('click', () => {
-          output.textContent = '';
-          try {
-            setBackend(backendSelect.value);
-            const result = evalFunc(program.value);
-            append('Result: ' + result);
-            snapshotHeap();
-          } catch (e) {
-            append('Error: ' + e);
+        logLine('Minimalisp ready. Shift+Enter inserts newline; Enter runs the code.', 'info');
+
+        runBtn.addEventListener('click', runProgram);
+        replInput.addEventListener('keydown', (event) => {
+          if (event.key === 'Enter' && !event.shiftKey) {
+            event.preventDefault();
+            runProgram();
           }
         });
+
+        backendSelect.addEventListener('change', () => {
+          if (backendLocked && backendSelect.value !== currentBackend) {
+            logLine('Reload the page to switch GC backend mid-session.', 'info');
+            backendSelect.value = currentBackend;
+            return;
+          }
+          currentBackend = backendSelect.value;
+          backendSetter(currentBackend);
+        });
+
         snapshotBtn.addEventListener('click', snapshotHeap);
         autoSnapshotCheckbox.addEventListener('change', updateAutoSnapshot);
         updateAutoSnapshot();
+        snapshotHeap();
       };
     </script>
   </body>
