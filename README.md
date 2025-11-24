@@ -162,7 +162,13 @@ Minimalisp includes a web-based dashboard to visualize Garbage Collection in rea
 
 ## Garbage Collector
 
-The GC interface (`gc.h` / `gc.c`) currently wraps `malloc`/`free`. To experiment with other algorithms, replace the implementation in `gc.c` with a real tracing or reference‑counting collector while keeping the same API.
+Minimalisp ships with multiple pluggable tracing collectors that all share the same API (`include/gc.h` + `src/gc/*`):
+
+- **mark-sweep** (default): a simple stop-the-world collector that manages a single heap via a doubly-linked free list.
+- **copying**: semi-space collector used for the WASM visualization demos; shows compaction behaviour very clearly.
+- **generational**: combines a copying nursery with an old-generation mark-sweep heap plus remembered sets for write barriers.
+
+Select a backend at runtime with `GC_BACKEND=mark-sweep|copying|generational make test-native` or via the dropdown in `web/index.html`. Every backend supports tagging (`gc_set_tag`) and heap snapshots (`gc_heap_snapshot`), which feed the Canvas visualizer so you can see fragmentation vs. compaction in real time. New algorithms belong under `src/gc/` and only need to implement the `GcBackend` vtable to plug into the rest of the interpreter.
 
 ---
 
