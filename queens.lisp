@@ -1,6 +1,3 @@
-(define (not x)
-  (if x '() t))
-
 (define (null? x)
   (if x '() t))
 
@@ -20,30 +17,28 @@
 (define (abs x)
   (if (< x 0) (- 0 x) x))
 
-(define (emit-solution solution)
-  (print solution)
-  (list solution))
-
 (define (safe? column queens offset)
-  (if (null? queens)
-      t
-      (if (if (= column (car queens)) t
-              (if (= (abs (- column (car queens))) offset) t '()))
-          '()
-          (safe? column (cdr queens) (+ offset 1)))))
+  (cond
+    ((null? queens) t)
+    ((or (= column (car queens))
+         (= (abs (- column (car queens))) offset)) '())
+    (else (safe? column (cdr queens) (+ offset 1)))))
 
-(define (extend-columns queens row size col accum)
+(define (extend-columns queens row size col solutions)
   (if (> col size)
-      accum
-      (if (safe? col queens 1)
-          (extend-columns queens row size (+ col 1)
-                           (append (extend (cons col queens) (+ row 1) size)
-                                   accum))
-          (extend-columns queens row size (+ col 1) accum))))
+      solutions
+      (let ((next (cons col queens))
+            (new-col (+ col 1)))
+        (if (safe? col queens 1)
+            (extend-columns queens row size new-col
+                             (append (extend next (+ row 1) size) solutions))
+            (extend-columns queens row size new-col solutions)))))
 
 (define (extend queens row size)
   (if (> row size)
-      (emit-solution (reverse queens))
+      (let ((solution (reverse queens)))
+        (print solution)
+        (list solution))
       (extend-columns queens row size 1 '())))
 
 (define (n-queens size)
