@@ -2,6 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef __EMSCRIPTEN__
+#include <emscripten/emscripten.h>
+#endif
 #include <stdarg.h>
 #include <setjmp.h>
 #include <ctype.h>
@@ -234,6 +237,77 @@ static void env_set_bindings(Env *env, Binding *bindings) {
     env->bindings = bindings;
 }
 
+static void append_to_buffer(char *buffer, size_t size, const char *text) {
+    size_t len = strlen(buffer);
+    if (len >= size - 1) return;
+    strncat(buffer, text, size - len - 1);
+}
+
+static void append_value_to_buffer(char *buffer, size_t size, Value *value);
+
+static void append_pair_to_buffer(char *buffer, size_t size, Value *value) {
+    append_to_buffer(buffer, size, "(");
+    while (1) {
+        append_value_to_buffer(buffer, size, value->car);
+        if (value->cdr && value->cdr->type == VAL_PAIR) {
+            append_to_buffer(buffer, size, " ");
+            value = value->cdr;
+            continue;
+        }
+        if (value->cdr && value->cdr->type != VAL_NIL) {
+            append_to_buffer(buffer, size, " . ");
+            append_value_to_buffer(buffer, size, value->cdr);
+        }
+        break;
+    }
+    append_to_buffer(buffer, size, ")");
+}
+
+static void append_value_to_buffer(char *buffer, size_t size, Value *value) {
+    if (!value || size == 0) return;
+    char tmp[64];
+    switch (value->type) {
+        case VAL_NUMBER:
+            snprintf(tmp, sizeof(tmp), "%g", value->number);
+            append_to_buffer(buffer, size, tmp);
+            break;
+        case VAL_SYMBOL:
+            append_to_buffer(buffer, size, value->symbol ? value->symbol : "#<symbol>");
+            break;
+        case VAL_PAIR:
+            append_pair_to_buffer(buffer, size, value);
+            break;
+        case VAL_NIL:
+            append_to_buffer(buffer, size, "()");
+            break;
+        case VAL_BUILTIN:
+            append_to_buffer(buffer, size, "#<builtin>");
+            break;
+        case VAL_LAMBDA:
+            append_to_buffer(buffer, size, "#<lambda>");
+            break;
+        default:
+            append_to_buffer(buffer, size, "#<unknown>");
+            break;
+    }
+}
+
+#ifdef __EMSCRIPTEN__
+static void wasm_emit_line(const char *line) {
+    EM_ASM({ Module.print(UTF8ToString($0)); }, line);
+}
+#else
+static void wasm_emit_line(const char *line) {
+    (void)line;
+}
+#endif
+
+static void emit_console_line(const char *line) {
+    printf("%s\n", line);
+    fflush(stdout);
+    wasm_emit_line(line);
+}
+
 static void env_define(Env *env, const char *name, Value *value) {
     Binding *b = env->bindings;
     while (b) {
@@ -385,11 +459,13 @@ static Value *builtin_gc_stats(Value **args, int argc, Env *env);
 
 static Value *builtin_print(Value **args, int argc, Env *env) {
     (void)env;
+    char line[512];
+    line[0] = '\0';
     for (int i = 0; i < argc; ++i) {
-        if (i) printf(" ");
-        print_value(args[i]);
+        if (i) append_to_buffer(line, sizeof(line), " ");
+        append_value_to_buffer(line, sizeof(line), args[i]);
     }
-    printf("\n");
+    emit_console_line(line);
     return NIL;
 }
 
@@ -890,28 +966,10 @@ static char *read_file(const char *path) {
     return buffer;
 }
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-EMSCRIPTEN_KEEPALIVE
-#endif
 static void print_value_to_buffer(char *buffer, size_t size, Value *value) {
     if (size == 0) return;
     buffer[0] = '\0';
-    
-    if (value->type == VAL_NUMBER) {
-        snprintf(buffer, size, "%g", value->number);
-    } else if (value->type == VAL_SYMBOL) {
-        snprintf(buffer, size, "%s", value->symbol);
-    } else if (value->type == VAL_PAIR) {
-        // Simplified list printing for buffer
-        snprintf(buffer, size, "(...)"); 
-    } else if (value->type == VAL_NIL) {
-        snprintf(buffer, size, "()");
-    } else if (value->type == VAL_BUILTIN) {
-        snprintf(buffer, size, "#<builtin>");
-    } else if (value->type == VAL_LAMBDA) {
-        snprintf(buffer, size, "#<lambda>");
-    }
+    append_value_to_buffer(buffer, size, value);
 }
 
 #ifdef __EMSCRIPTEN__
