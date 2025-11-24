@@ -44,6 +44,11 @@ void *gc_mark_ptr(void *ptr) {
     return gc_backend->mark_ptr(ptr);
 }
 
+void gc_set_tag(void *ptr, unsigned char tag) {
+    ensure_backend();
+    if (gc_backend->set_tag) gc_backend->set_tag(ptr, tag);
+}
+
 void gc_add_root(void **slot) {
     ensure_backend();
     gc_backend->add_root(slot);
@@ -111,4 +116,10 @@ double gc_get_freed_bytes(void) {
 double gc_get_current_bytes(void) {
     ensure_backend();
     return gc_backend->get_current_bytes ? gc_backend->get_current_bytes() : 0.0;
+}
+
+size_t gc_heap_snapshot(GcObjectInfo *out, size_t capacity) {
+    ensure_backend();
+    if (!gc_backend->heap_snapshot) return 0;
+    return gc_backend->heap_snapshot(out, capacity);
 }

@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 // Simple semi-space copying collector: allocations occur in the active space,
 // collections copy reachable objects into the inactive space, then swap.
@@ -14,6 +15,7 @@ typedef struct CopyHeader {
     size_t size;
     gc_trace_func trace;
     void *forward;
+    unsigned char tag;
 } CopyHeader;
 
 // Roots are stored as addresses of Value/Env/Tokens so we can update slots
@@ -132,6 +134,7 @@ static void *copy_allocate(size_t size) {
     header->size = payload;
     header->trace = NULL;
     header->forward = NULL;
+    header->tag = GC_TAG_UNKNOWN;
     void *payload_ptr = (void*)(header + 1);
     memset(payload_ptr, 0, payload);
     copy_stats.allocated_bytes += size;
@@ -142,6 +145,20 @@ static void *copy_allocate(size_t size) {
 static void copy_set_trace(void *ptr, gc_trace_func trace) {
     CopyHeader *header = copy_header_for(ptr);
     if (header) header->trace = trace;
+}
+
+static void copy_set_tag(void *ptr, unsigned char tag) {
+    if (!ptr) return;
+    if (pointer_in_space(active_space, ptr) || pointer_in_space(inactive_space, ptr)) {
+        CopyHeader *header = copy_header_for(ptr);
+        if (header) header->tag = tag;
+    }
+}
+
+static void copy_write_barrier(void *owner, void **slot, void *child) {
+    (void)owner;
+    (void)slot;
+    (void)child;
 }
 
 static void swap_spaces(void) {
@@ -172,6 +189,7 @@ static void *copy_copy_ptr(void *ptr) {
     new_header->size = old_header->size;
     new_header->trace = old_header->trace;
     new_header->forward = NULL;
+    new_header->tag = old_header->tag;
     memcpy(new_header + 1, old_header + 1, old_header->size);
     old_header->forward = new_header + 1;
     return old_header->forward;
@@ -234,15 +252,31 @@ static double copy_get_allocated_bytes(void) { return (double)copy_stats.allocat
 static double copy_get_freed_bytes(void) { return (double)copy_stats.freed_bytes; }
 static double copy_get_current_bytes(void) { return (double)copy_stats.current_bytes; }
 
+static size_t copy_heap_snapshot(GcObjectInfo *out, size_t capacity) {
+    size_t count = 0;
+    unsigned char *scan = active_space;
+    while (scan < alloc_ptr && count < capacity) {
+        CopyHeader *header = (CopyHeader*)scan;
+        out[count].addr = (uintptr_t)(header + 1);
+        out[count].size = header->size;
+        out[count].generation = GC_GEN_NURSERY;
+        out[count].tag = header->tag;
+        count++;
+        scan += sizeof(CopyHeader) + header->size;
+    }
+    return count;
+}
+
 const GcBackend *gc_copying_backend(void) {
     static const GcBackend backend = {
         copy_init,
         copy_allocate,
         copy_set_trace,
         copy_mark_ptr,
+        copy_set_tag,
         copy_add_root,
         copy_remove_root,
-        NULL,
+        copy_write_barrier,
         copy_collect,
         copy_free,
         copy_set_threshold,
@@ -251,7 +285,8 @@ const GcBackend *gc_copying_backend(void) {
         copy_get_collections_count,
         copy_get_allocated_bytes,
         copy_get_freed_bytes,
-        copy_get_current_bytes
+        copy_get_current_bytes,
+        copy_heap_snapshot
     };
     return &backend;
 }

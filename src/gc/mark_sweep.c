@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 // Allocation headers are woven into a doubly-linked list so we can sweep
 // without separate metadata structures.
@@ -13,6 +14,7 @@ typedef struct GcHeader
     size_t size;
     int marked;
     gc_trace_func trace;
+    unsigned char tag;
 } GcHeader;
 
 // Roots are stored as slots (addresses of Value*/Env* pointers) to avoid
@@ -112,6 +114,7 @@ static void *ms_allocate(size_t size)
     header->size = size;
     header->marked = 0;
     header->trace = NULL;
+    header->tag = GC_TAG_UNKNOWN;
     void *payload = (void *)(header + 1);
     memset(payload, 0, size);
     gc_bytes_allocated += size;
@@ -133,6 +136,14 @@ static void ms_set_trace(void *ptr, gc_trace_func trace)
         return;
     GcHeader *header = gc_header_for(ptr);
     header->trace = trace;
+}
+
+static void ms_set_tag(void *ptr, unsigned char tag)
+{
+    if (!ptr)
+        return;
+    GcHeader *header = gc_header_for(ptr);
+    header->tag = tag;
 }
 
 static void *ms_mark_ptr(void *ptr)
@@ -287,6 +298,22 @@ static double ms_get_allocated_bytes(void) { return (double)internal_stats.alloc
 static double ms_get_freed_bytes(void) { return (double)internal_stats.freed_bytes; }
 static double ms_get_current_bytes(void) { return (double)internal_stats.current_bytes; }
 
+static size_t ms_heap_snapshot(GcObjectInfo *out, size_t capacity)
+{
+    size_t count = 0;
+    GcHeader *obj = gc_objects;
+    while (obj && count < capacity)
+    {
+        out[count].addr = (uintptr_t)(obj + 1);
+        out[count].size = obj->size;
+        out[count].generation = GC_GEN_OLD;
+        out[count].tag = obj->tag;
+        count++;
+        obj = obj->next;
+    }
+    return count;
+}
+
 const GcBackend *gc_mark_sweep_backend(void)
 {
     static const GcBackend backend = {
@@ -294,6 +321,7 @@ const GcBackend *gc_mark_sweep_backend(void)
         ms_allocate,
         ms_set_trace,
         ms_mark_ptr,
+        ms_set_tag,
         ms_add_root,
         ms_remove_root,
         ms_write_barrier,
@@ -305,6 +333,7 @@ const GcBackend *gc_mark_sweep_backend(void)
         ms_get_collections_count,
         ms_get_allocated_bytes,
         ms_get_freed_bytes,
-        ms_get_current_bytes};
+        ms_get_current_bytes,
+        ms_heap_snapshot};
     return &backend;
 }

@@ -8,6 +8,7 @@ typedef struct GcBackend {
     void *(*allocate)(size_t size);
     void (*set_trace)(void *ptr, gc_trace_func trace);
     void *(*mark_ptr)(void *ptr);
+    void (*set_tag)(void *ptr, unsigned char tag);
     void (*add_root)(void **slot);
     void (*remove_root)(void **slot);
     void (*write_barrier)(void *owner, void **slot, void *child);
@@ -20,6 +21,7 @@ typedef struct GcBackend {
     double (*get_allocated_bytes)(void);
     double (*get_freed_bytes)(void);
     double (*get_current_bytes)(void);
+    size_t (*heap_snapshot)(GcObjectInfo *out, size_t capacity);
 } GcBackend;
 
 const GcBackend *gc_mark_sweep_backend(void);

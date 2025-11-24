@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <stdint.h>
 
 // Nursery (young generation) size in bytes. Survivors that reach PROMOTE_AGE
 // are copied into the old generation managed by mark-sweep.
@@ -15,6 +16,7 @@ typedef struct NurseryHeader {
     gc_trace_func trace;
     void *forward;
     unsigned char age;
+    unsigned char tag;
 } NurseryHeader;
 
 // Headers stored in the old generation (mark-sweep list).
@@ -24,6 +26,7 @@ typedef struct OldHeader {
     size_t size;
     int marked;
     gc_trace_func trace;
+    unsigned char tag;
 } OldHeader;
 
 typedef struct {
@@ -119,6 +122,7 @@ static void *old_allocate(size_t size, gc_trace_func trace) {
     header->trace = trace;
     void *payload = (void*)(header + 1);
     memset(payload, 0, size);
+    header->tag = GC_TAG_UNKNOWN;
     old_bytes_allocated += size;
     return payload;
 }
@@ -172,6 +176,8 @@ static void generational_init(void) {
 static void *promote_object(NurseryHeader *header, void *payload) {
     void *old_obj = old_allocate(header->size, header->trace);
     memcpy(old_obj, payload, header->size);
+    OldHeader *old_header = old_find_header(old_obj);
+    if (old_header) old_header->tag = header->tag;
     header->forward = old_obj;
     return old_obj;
 }
@@ -199,6 +205,7 @@ static void *copy_young_object(void *ptr) {
     new_header->trace = old_header->trace;
     new_header->forward = NULL;
     new_header->age = old_header->age + 1;
+    new_header->tag = old_header->tag;
     void *payload = (void*)(new_header + 1);
     memcpy(payload, old_header + 1, old_header->size);
     old_header->forward = payload;
@@ -240,6 +247,7 @@ static void *gen_allocate(size_t size) {
     header->trace = NULL;
     header->forward = NULL;
     header->age = 0;
+    header->tag = GC_TAG_UNKNOWN;
     void *payload_ptr = (void*)(header + 1);
     memset(payload_ptr, 0, payload);
     gc_stats.allocated_bytes += size;
@@ -255,6 +263,17 @@ static void gen_set_trace(void *ptr, gc_trace_func trace) {
     } else {
         OldHeader *header = old_find_header(ptr);
         if (header) header->trace = trace;
+    }
+}
+
+static void gen_set_tag(void *ptr, unsigned char tag) {
+    if (!ptr) return;
+    if (pointer_in_space(nursery_active, ptr) || pointer_in_space(nursery_inactive, ptr)) {
+        NurseryHeader *header = nursery_header_for(ptr);
+        if (header) header->tag = tag;
+    } else {
+        OldHeader *header = old_find_header(ptr);
+        if (header) header->tag = tag;
     }
 }
 
@@ -420,6 +439,30 @@ static double gen_get_allocated_bytes(void) { return (double)gc_stats.allocated_
 static double gen_get_freed_bytes(void) { return (double)gc_stats.freed_bytes; }
 static double gen_get_current_bytes(void) { return (double)gc_stats.current_bytes; }
 
+static size_t gen_heap_snapshot(GcObjectInfo *out, size_t capacity) {
+    size_t count = 0;
+    unsigned char *scan = nursery_active;
+    while (scan < nursery_alloc && count < capacity) {
+        NurseryHeader *header = (NurseryHeader*)scan;
+        out[count].addr = (uintptr_t)(header + 1);
+        out[count].size = header->size;
+        out[count].generation = GC_GEN_NURSERY;
+        out[count].tag = header->tag;
+        count++;
+        scan += sizeof(NurseryHeader) + header->size;
+    }
+    OldHeader *obj = old_objects;
+    while (obj && count < capacity) {
+        out[count].addr = (uintptr_t)(obj + 1);
+        out[count].size = obj->size;
+        out[count].generation = GC_GEN_OLD;
+        out[count].tag = obj->tag;
+        count++;
+        obj = obj->next;
+    }
+    return count;
+}
+
 static void old_mark(void *ptr) {
     OldHeader *header = old_find_header(ptr);
     if (!header || header->marked) return;
@@ -444,6 +487,7 @@ const GcBackend *gc_generational_backend(void) {
         gen_allocate,
         gen_set_trace,
         gen_mark_ptr,
+        gen_set_tag,
         gen_add_root,
         gen_remove_root,
         gen_write_barrier,
@@ -455,7 +499,8 @@ const GcBackend *gc_generational_backend(void) {
         gen_get_collections_count,
         gen_get_allocated_bytes,
         gen_get_freed_bytes,
-        gen_get_current_bytes
+        gen_get_current_bytes,
+        gen_heap_snapshot
     };
     return &backend;
 }

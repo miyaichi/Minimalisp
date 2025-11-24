@@ -3,8 +3,34 @@
 #define GC_H
 
 #include <stddef.h>
+#include <stdint.h>
 
 typedef void (*gc_trace_func)(void *object);
+
+enum {
+    GC_GEN_UNKNOWN = 0,
+    GC_GEN_NURSERY = 1,
+    GC_GEN_OLD = 2
+};
+
+enum {
+    GC_TAG_UNKNOWN = 0,
+    GC_TAG_VALUE_NUMBER = 1,
+    GC_TAG_VALUE_SYMBOL = 2,
+    GC_TAG_VALUE_PAIR = 3,
+    GC_TAG_VALUE_LAMBDA = 4,
+    GC_TAG_VALUE_BUILTIN = 5,
+    GC_TAG_ENV = 10,
+    GC_TAG_BINDING = 11,
+    GC_TAG_STRING = 12
+};
+
+typedef struct {
+    uintptr_t addr;
+    size_t size;
+    unsigned char generation;
+    unsigned char tag;
+} GcObjectInfo;
 
 typedef struct {
     size_t collections;
@@ -25,6 +51,9 @@ void gc_set_trace(void *ptr, gc_trace_func trace);
 // Mark a GC-managed pointer as reachable (used by trace callbacks).
 void *gc_mark_ptr(void *ptr);
 
+// Tag an allocation (used for visualization/diagnostics).
+void gc_set_tag(void *ptr, unsigned char tag);
+
 // Register/unregister a root pointer slot.
 void gc_add_root(void **slot);
 void gc_remove_root(void **slot);
@@ -44,6 +73,9 @@ double gc_get_collections_count(void);
 double gc_get_allocated_bytes(void);
 double gc_get_freed_bytes(void);
 double gc_get_current_bytes(void);
+
+// Snapshot current heap objects. Returns number of entries written.
+size_t gc_heap_snapshot(GcObjectInfo *out, size_t capacity);
 
 // Perform a garbage collection cycle.
 void gc_collect(void);

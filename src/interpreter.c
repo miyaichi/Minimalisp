@@ -138,6 +138,7 @@ static void runtime_error(const char *fmt, ...) {
 static char *gc_alloc_buffer(size_t size) {
     char *buf = (char*)gc_allocate(size);
     gc_set_trace(buf, NULL);
+    gc_set_tag(buf, GC_TAG_STRING);
     return buf;
 }
 
@@ -165,18 +166,21 @@ static Value *alloc_value(ValueType type) {
 
 static Value *make_number(double num) {
     Value *v = alloc_value(VAL_NUMBER);
+    gc_set_tag(v, GC_TAG_VALUE_NUMBER);
     v->number = num;
     return v;
 }
 
 static Value *make_symbol_copy(const char *text) {
     Value *v = alloc_value(VAL_SYMBOL);
+    gc_set_tag(v, GC_TAG_VALUE_SYMBOL);
     v->symbol = gc_copy_cstring(text);
     return v;
 }
 
 static Value *make_pair(Value *car, Value *cdr) {
     Value *v = alloc_value(VAL_PAIR);
+    gc_set_tag(v, GC_TAG_VALUE_PAIR);
     v->car = car;
     v->cdr = cdr;
     return v;
@@ -184,12 +188,14 @@ static Value *make_pair(Value *car, Value *cdr) {
 
 static Value *make_builtin(BuiltinFunc fn) {
     Value *v = alloc_value(VAL_BUILTIN);
+    gc_set_tag(v, GC_TAG_VALUE_BUILTIN);
     v->builtin = fn;
     return v;
 }
 
 static Value *make_lambda(Value *params, Value *body, Env *env) {
     Value *v = alloc_value(VAL_LAMBDA);
+    gc_set_tag(v, GC_TAG_VALUE_LAMBDA);
     v->params = params;
     v->body = body;
     v->env = env;
@@ -207,6 +213,7 @@ static int is_truthy(Value *value) {
 static Env *env_new(Env *parent) {
     Env *env = (Env*)gc_allocate(sizeof(Env));
     gc_set_trace(env, trace_env);
+    gc_set_tag(env, GC_TAG_ENV);
     env->parent = parent;
     env->bindings = NULL;
     return env;
@@ -238,6 +245,7 @@ static void env_define(Env *env, const char *name, Value *value) {
     }
     Binding *binding = (Binding*)gc_allocate(sizeof(Binding));
     gc_set_trace(binding, trace_binding);
+    gc_set_tag(binding, GC_TAG_BINDING);
     binding->name = gc_copy_cstring(name);
     binding_set_value(binding, value);
     binding_set_next(binding, env->bindings);
