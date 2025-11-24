@@ -13,7 +13,8 @@
 - [Usage](#usage)
   - [Interactive REPL (native)](#interactive-repl-native)
   - [Command‑line (native)](#command-line-native)
-  - [Script Files](#script-files)
+- [Script Files](#script-files)
+- [GC Demo Programs](#gc-demo-programs)
   - [WebAssembly](#webassembly)
 - [Garbage Collector](#garbage-collector)
 - [Contributing](#contributing)
@@ -139,6 +140,16 @@ Result: ()
 ```
 
 Use the `-f` flag to evaluate any `.lisp` file; the bundled `hanoi.lisp` prints the sequence of moves for a 3-disk Tower of Hanoi run.
+
+### GC Demo Programs
+
+`gc-demo-programs.lisp` bundles several GC-focused workloads:
+- `demo-wave`: allocates lists and triggers `(gc)` to visualize allocation waves.
+- `demo-fragment`: builds varying-length ranges to fragment the heap.
+- `demo-generational`: mixes short-lived allocations with long-lived survivors.
+- `demo-tree`: constructs binary trees to stress recursive graph allocation.
+
+Load it via `./interpreter -f gc-demo-programs.lisp` (native) or paste the definitions into the WASM REPL, then invoke each demo to watch the heap canvas respond under different backends.
 
 ### WebAssembly
 
