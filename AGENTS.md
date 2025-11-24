@@ -1,13 +1,14 @@
 # Repository Guidelines
 
 ## Project Structure & Module Organization
-The code now lives under `src/` with headers in `include/`. `src/interpreter.c` owns the lexer, parser, evaluator, and CLI/REPL, while GC implementations live in `src/gc/` (e.g., `mark_sweep.c`, `copying.c`) behind the `gc_backend` interface and `gc_runtime` shim. WebAssembly artifacts and the browser harness live under `web/`. `README.md` describes usage/build steps and `hanoi.lisp` shows a non-trivial program.
+The code now lives under `src/` with headers in `include/`. `src/interpreter.c` owns the lexer, parser, evaluator, and CLI/REPL, while GC implementations live in `src/gc/` (e.g., `mark_sweep.c`, `copying.c`, `generational.c`) behind the `gc_backend` interface and `gc_runtime` shim. WebAssembly artifacts and the browser harness live under `web/`. `README.md` describes usage/build steps and `hanoi.lisp` shows a non-trivial program.
 
 ## Build, Test & Development Commands
 - `source /path/to/emsdk_env.sh && make` — emits `web/interpreter.js`/`.wasm` using a repo-local `.emscripten-cache` so CI/sandboxes work.
 - `make native` — builds the native CLI/REPL to `./interpreter` (override compiler via `NATIVE_CC=clang make native`).
 - `make test-native` — runs the deterministic smoke suite (arithmetic, list ops, quoting, scripts, GC, multi-line REPL).
-- `GC_BACKEND=copying make test-native` — reruns the same tests against the copying GC backend.
+- `GC_BACKEND=copying make test-native` — reruns the same tests against the semispace copying GC backend.
+- `GC_BACKEND=generational make test-native` — sanity-checks the nursery+old-generation collector.
 - `./interpreter "(print (+ 1 2 3))"` or `./interpreter -f hanoi.lisp` — spot-checks for manual debugging.
 
 ## Coding Style & Naming Conventions
@@ -20,4 +21,4 @@ Use `make test-native` before pushing—it exercises arithmetic, list ops, quoti
 History currently uses short, imperative commits (e.g., “Initial commit”); continue that style with present-tense summaries under ~60 characters. Each pull request should explain the motivation, list testing evidence (commands run, expressions evaluated), and call out GC or build-system side effects reviewers must note. Reference related issues, attach screenshots only when demonstrating console output changes, and keep branches rebased so the slim history stays linear.
 
 ## Garbage-Collector Extension Tips
-Each GC backend implements the `GcBackend` vtable (see `src/gc/gc_backend.h`) and plugs into `gc_runtime`. New algorithms belong in their own file under `src/gc/` and should expose a factory (e.g., `gc_mark_sweep_backend`, `gc_copying_backend`). Keep interpreter-facing APIs stable by routing everything through `gc_runtime`, and update docs/tests to demonstrate `GC_BACKEND=...` selection. Backend-specific knobs/comments live alongside the implementation.
+Each GC backend implements the `GcBackend` vtable (see `src/gc/gc_backend.h`) and plugs into `gc_runtime`. New algorithms belong in their own file under `src/gc/` and should expose a factory (e.g., `gc_mark_sweep_backend`, `gc_copying_backend`, `gc_generational_backend`). Keep interpreter-facing APIs stable by routing everything through `gc_runtime`, and update docs/tests to demonstrate `GC_BACKEND=...` selection. Backend-specific knobs/comments live alongside the implementation.

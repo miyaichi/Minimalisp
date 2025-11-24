@@ -108,7 +108,7 @@ GC_BACKEND=copying ./interpreter "(print 'hello)"
 GC_BACKEND=copying make test-native
 ```
 
-Set `GC_BACKEND=copying` to run the semispace copying collector; omit the variable (or set `mark-sweep`) to use the default mark-and-sweep backend. Copying GC currently allocates a fixed 2 MB semispace per heap—tweak `DEFAULT_COPY_HEAP` in `src/gc/copying.c` if you need more headroom.
+Set `GC_BACKEND=copying` to run the semispace copying collector, or `GC_BACKEND=generational` to try the nursery (copying) + old-generation (mark-sweep) hybrid. Leaving the variable unset (or `mark-sweep`) falls back to the classic mark-and-sweep backend. Copying/Generational collectors use fixed semispace sizes; tweak the constants in `src/gc/copying.c` / `src/gc/generational.c` if you need more headroom.
 
 ### Script Files
 

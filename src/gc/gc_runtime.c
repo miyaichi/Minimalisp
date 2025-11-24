@@ -11,6 +11,9 @@ static const GcBackend *select_backend(void) {
         if (strcmp(env, "copy") == 0 || strcmp(env, "copying") == 0 || strcmp(env, "semispace") == 0) {
             return gc_copying_backend();
         }
+        if (strcmp(env, "gen") == 0 || strcmp(env, "generational") == 0) {
+            return gc_generational_backend();
+        }
     }
     return gc_mark_sweep_backend();
 }
