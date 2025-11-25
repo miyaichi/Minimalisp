@@ -11,6 +11,20 @@
 static const GcBackend *gc_backend = NULL;
 static char backend_override[32];
 static int backend_override_set = 0;
+static size_t initial_heap_size = 0;
+
+void gc_set_initial_heap_size(size_t size) {
+    initial_heap_size = size;
+}
+
+size_t gc_get_initial_heap_size(void) {
+    if (initial_heap_size > 0) return initial_heap_size;
+    const char *env = getenv("GC_INITIAL_HEAP_SIZE");
+    if (env) {
+        return (size_t)atol(env);
+    }
+    return 0;
+}
 
 static const GcBackend *select_backend(void) {
     const char *env = NULL;

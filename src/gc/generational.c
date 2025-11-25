@@ -7,7 +7,7 @@
 
 // Nursery (young generation) size in bytes. Survivors that reach PROMOTE_AGE
 // are copied into the old generation managed by mark-sweep.
-#define DEFAULT_NURSERY_SIZE (16 * 1024 * 1024)
+#define DEFAULT_NURSERY_SIZE (512 * 1024)
 #define PROMOTE_AGE 2
 #define OLD_GROWTH_FACTOR 2.0
 
@@ -155,6 +155,10 @@ static void swap_nursery_spaces(void) {
 
 static void generational_init(void) {
     if (generational_initialized) return;
+    size_t configured_size = gc_get_initial_heap_size();
+    if (configured_size > 0) {
+        nursery_size = align_size(configured_size);
+    }
     nursery_active = (unsigned char*)malloc(nursery_size);
     nursery_inactive = (unsigned char*)malloc(nursery_size);
     if (!nursery_active || !nursery_inactive) {

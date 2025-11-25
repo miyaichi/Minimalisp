@@ -57,6 +57,12 @@ typedef struct {
 // Initialize the garbage collector. Must be called before any allocation.
 void gc_init(void);
 
+// Set the initial heap size (must be called before gc_init)
+void gc_set_initial_heap_size(size_t size);
+
+// Get the configured initial heap size (returns 0 if not set)
+size_t gc_get_initial_heap_size(void);
+
 // Allocate memory managed by the GC. Returns a pointer to a block of at least `size` bytes.
 void *gc_allocate(size_t size);
 

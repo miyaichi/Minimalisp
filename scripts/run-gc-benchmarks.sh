@@ -33,6 +33,10 @@ for backend in "${BACKENDS[@]}"; do
         # Run benchmark with appropriate backend
         if [ "$backend" = "mark-sweep" ]; then
             $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
+        elif [ "$backend" = "copying" ]; then
+            GC_INITIAL_HEAP_SIZE=33554432 GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
+        elif [ "$backend" = "generational" ]; then
+            GC_INITIAL_HEAP_SIZE=16777216 GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
         else
             GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
         fi

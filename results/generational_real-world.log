@@ -3,4 +3,4 @@ Running-Factorial
 Running-List-Operations
 Running-Nested-Construction
 Completed
-Result: ((collections . 1) (allocated . 451502) (freed . 0) (current . 912304) (total-gc-time-ms . 0.138) (max-pause-ms . 0.138) (avg-pause-ms . 0.138) (last-pause-ms . 0.138) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))
+Result: ((collections . 1) (allocated . 451502) (freed . 0) (current . 912304) (total-gc-time-ms . 0.154) (max-pause-ms . 0.154) (avg-pause-ms . 0.154) (last-pause-ms . 0.154) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))

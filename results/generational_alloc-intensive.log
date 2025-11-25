@@ -1,3 +1,3 @@
 Starting-Allocation-Intensive-Test
 Completed
-Result: ((collections . 1) (allocated . 1.35645e+06) (freed . 0) (current . 2.3769e+06) (total-gc-time-ms . 0.14) (max-pause-ms . 0.14) (avg-pause-ms . 0.14) (last-pause-ms . 0.14) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))
+Result: ((collections . 1) (allocated . 1.35645e+06) (freed . 0) (current . 2.3769e+06) (total-gc-time-ms . 0.151) (max-pause-ms . 0.151) (avg-pause-ms . 0.151) (last-pause-ms . 0.151) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))

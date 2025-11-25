@@ -7,7 +7,7 @@
 
 // Simple semi-space copying collector: allocations occur in the active space,
 // collections copy reachable objects into the inactive space, then swap.
-#define DEFAULT_COPY_HEAP (32 * 1024 * 1024)
+#define DEFAULT_COPY_HEAP (2 * 1024 * 1024)
 
 // Each object is tagged with a payload size, trace hook, and forwarding pointer
 // (used during the copy phase to avoid duplicating an object).
@@ -72,6 +72,10 @@ static void copy_alloc_spaces(size_t size) {
 
 static void copy_init(void) {
     if (copying_initialized) return;
+    size_t configured_size = gc_get_initial_heap_size();
+    if (configured_size > 0) {
+        semi_space_size = align_size(configured_size);
+    }
     copy_alloc_spaces(semi_space_size);
     copy_reset_roots();
     memset(&copy_stats, 0, sizeof(copy_stats));
