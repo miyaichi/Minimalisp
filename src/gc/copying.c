@@ -75,6 +75,7 @@ static void copy_init(void) {
     copy_alloc_spaces(semi_space_size);
     copy_reset_roots();
     memset(&copy_stats, 0, sizeof(copy_stats));
+    // Timing fields are zero-initialized by memset
     copying_initialized = 1;
 }
 
@@ -192,24 +193,36 @@ static void *copy_copy_ptr(void *ptr) {
     new_header->tag = old_header->tag;
     memcpy(new_header + 1, old_header + 1, old_header->size);
     old_header->forward = new_header + 1;
+    copy_stats.objects_copied++;  // Track copied objects
     return old_header->forward;
 }
 
 static void scan_active_space(void) {
     unsigned char *scan = active_space;
+    size_t scanned = 0;
     while (scan < alloc_ptr) {
         CopyHeader *header = (CopyHeader*)scan;
         void *obj = (void*)(header + 1);
+        scanned++;
         if (header->trace) header->trace(obj);
         scan += sizeof(CopyHeader) + header->size;
     }
+    copy_stats.objects_scanned += scanned;
 }
 
 static void copy_collect(void) {
     if (!copying_initialized || copying_collecting) return;
     copying_collecting = 1;
+    
+    // Start timing
+    double start_time = gc_get_time_ms();
+    
     size_t before = copy_stats.current_bytes;
     copy_stats.collections++;
+    
+    // Track objects before collection for survival rate
+    size_t objects_before_copy = copy_stats.objects_copied;
+    
     swap_spaces();
     for (size_t i = 0; i < copy_root_count; ++i) {
         void **slot = copy_roots[i].slot;
@@ -221,6 +234,32 @@ static void copy_collect(void) {
     size_t after = alloc_ptr - active_space;
     copy_stats.current_bytes = after;
     if (before > after) copy_stats.freed_bytes += before - after;
+    
+    // Calculate survival rate (copied objects / scanned objects)
+    size_t objects_copied_this_cycle = copy_stats.objects_copied - objects_before_copy;
+    if (copy_stats.objects_scanned > 0) {
+        copy_stats.survival_rate = (double)objects_copied_this_cycle / (double)copy_stats.objects_scanned;
+    }
+    
+    // Calculate metadata overhead: count live objects in active space
+    size_t live_objects = 0;
+    unsigned char *scan = active_space;
+    while (scan < alloc_ptr) {
+        CopyHeader *header = (CopyHeader*)scan;
+        live_objects++;
+        scan += sizeof(CopyHeader) + header->size;
+    }
+    copy_stats.metadata_bytes = live_objects * sizeof(CopyHeader);
+    
+    // End timing and update stats
+    double elapsed = gc_get_time_ms() - start_time;
+    copy_stats.last_gc_pause_ms = elapsed;
+    copy_stats.total_gc_time_ms += elapsed;
+    if (elapsed > copy_stats.max_gc_pause_ms) {
+        copy_stats.max_gc_pause_ms = elapsed;
+    }
+    copy_stats.avg_gc_pause_ms = copy_stats.total_gc_time_ms / copy_stats.collections;
+    
     copying_collecting = 0;
 }
 

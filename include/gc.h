@@ -37,6 +37,21 @@ typedef struct {
     size_t allocated_bytes;
     size_t freed_bytes;
     size_t current_bytes;
+    
+    // Timing measurements (Phase 1)
+    double total_gc_time_ms;      // Total time spent in GC
+    double max_gc_pause_ms;       // Maximum pause time
+    double avg_gc_pause_ms;       // Average pause time
+    double last_gc_pause_ms;      // Most recent GC pause
+    
+    // Object lifecycle tracking (Phase 2)
+    size_t objects_scanned;       // Total objects scanned during GC
+    size_t objects_copied;        // Objects copied (copying/gen only)
+    size_t objects_promoted;      // Objects promoted (gen only)
+    
+    // Memory efficiency metrics (Phase 3)
+    double survival_rate;         // Live objects / scanned objects
+    size_t metadata_bytes;        // Bytes used for GC metadata
 } GcStats;
 
 // Initialize the garbage collector. Must be called before any allocation.

@@ -579,20 +579,47 @@ static Value *builtin_gc_stats(Value **args, int argc, Env *env) {
     GcStats stats;
     gc_get_stats(&stats);
 
-    // Construct association list: ((collections . N) (allocated . N) (freed . N) (current . N))
-    // We build it in reverse order to make it easier: current -> freed -> allocated -> collections
+    // Construct association list with all metrics
+    // Build in reverse order for easier construction
     
+    Value *metadata_pair = make_pair(make_symbol_copy("metadata-bytes"), make_number((double)stats.metadata_bytes));
+    Value *list = make_pair(metadata_pair, NIL);
+    
+    Value *survival_pair = make_pair(make_symbol_copy("survival-rate"), make_number(stats.survival_rate));
+    list = make_pair(survival_pair, list);
+    
+    Value *promoted_pair = make_pair(make_symbol_copy("objects-promoted"), make_number((double)stats.objects_promoted));
+    list = make_pair(promoted_pair, list);
+    
+    Value *copied_pair = make_pair(make_symbol_copy("objects-copied"), make_number((double)stats.objects_copied));
+    list = make_pair(copied_pair, list);
+    
+    Value *scanned_pair = make_pair(make_symbol_copy("objects-scanned"), make_number((double)stats.objects_scanned));
+    list = make_pair(scanned_pair, list);
+    
+    Value *last_pause_pair = make_pair(make_symbol_copy("last-pause-ms"), make_number(stats.last_gc_pause_ms));
+    list = make_pair(last_pause_pair, list);
+    
+    Value *avg_pause_pair = make_pair(make_symbol_copy("avg-pause-ms"), make_number(stats.avg_gc_pause_ms));
+    list = make_pair(avg_pause_pair, list);
+    
+    Value *max_pause_pair = make_pair(make_symbol_copy("max-pause-ms"), make_number(stats.max_gc_pause_ms));
+    list = make_pair(max_pause_pair, list);
+    
+    Value *total_time_pair = make_pair(make_symbol_copy("total-gc-time-ms"), make_number(stats.total_gc_time_ms));
+    list = make_pair(total_time_pair, list);
+
     Value *current_pair = make_pair(make_symbol_copy("current"), make_number((double)stats.current_bytes));
-    Value *list = make_pair(current_pair, NIL); // (current . N)
+    list = make_pair(current_pair, list);
 
     Value *freed_pair = make_pair(make_symbol_copy("freed"), make_number((double)stats.freed_bytes));
-    list = make_pair(freed_pair, list); // (freed . N) ...
+    list = make_pair(freed_pair, list);
 
     Value *allocated_pair = make_pair(make_symbol_copy("allocated"), make_number((double)stats.allocated_bytes));
-    list = make_pair(allocated_pair, list); // (allocated . N) ...
+    list = make_pair(allocated_pair, list);
 
     Value *collections_pair = make_pair(make_symbol_copy("collections"), make_number((double)stats.collections));
-    list = make_pair(collections_pair, list); // (collections . N) ...
+    list = make_pair(collections_pair, list);
 
     return list;
 }

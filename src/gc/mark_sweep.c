@@ -90,6 +90,7 @@ static void ms_init(void)
     gc_bytes_allocated = 0;
     gc_next_threshold = 1024 * 1024;
     memset(&internal_stats, 0, sizeof(internal_stats));
+    // Timing fields are zero-initialized by memset
 }
 
 static void *ms_allocate(size_t size)
@@ -208,9 +209,12 @@ static void gc_mark_roots(void)
 static void gc_sweep(void)
 {
     GcHeader *obj = gc_objects;
+    size_t scanned = 0;
+    size_t survived = 0;
     while (obj)
     {
         GcHeader *next = obj->next;
+        scanned++;
         if (!obj->marked)
         {
             if (obj->prev)
@@ -227,8 +231,15 @@ static void gc_sweep(void)
         else
         {
             obj->marked = 0;
+            survived++;
         }
         obj = next;
+    }
+    internal_stats.objects_scanned += scanned;
+    
+    // Calculate survival rate
+    if (scanned > 0) {
+        internal_stats.survival_rate = (double)survived / (double)scanned;
     }
 }
 
@@ -245,10 +256,32 @@ static void ms_collect(void)
     if (!gc_initialized || gc_collecting)
         return;
     gc_collecting = 1;
+    
+    // Start timing
+    double start_time = gc_get_time_ms();
+    
     internal_stats.collections++;
     gc_mark_roots();
     gc_sweep();
     gc_next_threshold = (size_t)(gc_bytes_allocated * GC_GROWTH_FACTOR + 1024);
+    
+    // Calculate metadata overhead: count live objects and their headers
+    size_t live_objects = 0;
+    for (GcHeader *obj = gc_objects; obj; obj = obj->next) {
+        live_objects++;
+    }
+    internal_stats.metadata_bytes = live_objects * sizeof(GcHeader);
+    
+    // End timing and update stats
+    double elapsed = gc_get_time_ms() - start_time;
+    internal_stats.last_gc_pause_ms = elapsed;
+    internal_stats.total_gc_time_ms += elapsed;
+    if (elapsed > internal_stats.max_gc_pause_ms) {
+        internal_stats.max_gc_pause_ms = elapsed;
+    }
+    // Update average: avg = total / collections
+    internal_stats.avg_gc_pause_ms = internal_stats.total_gc_time_ms / internal_stats.collections;
+    
     gc_collecting = 0;
 }
 

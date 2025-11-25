@@ -3,6 +3,21 @@
 
 #include "gc.h"
 
+// Timing utilities for GC performance measurement
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+static inline double gc_get_time_ms(void) {
+    return emscripten_get_now();
+}
+#else
+#include <time.h>
+static inline double gc_get_time_ms(void) {
+    struct timespec ts;
+    clock_gettime(CLOCK_MONOTONIC, &ts);
+    return ts.tv_sec * 1000.0 + ts.tv_nsec / 1000000.0;
+}
+#endif
+
 typedef struct GcBackend {
     void (*init)(void);
     void *(*allocate)(size_t size);

@@ -168,6 +168,7 @@ static void generational_init(void) {
     free(roots); roots = NULL;
     free(remembered); remembered = NULL;
     memset(&gc_stats, 0, sizeof(gc_stats));
+    // Timing fields are zero-initialized by memset
     old_objects = NULL;
     old_bytes_allocated = 0;
     old_next_threshold = nursery_size * 2;
@@ -180,6 +181,7 @@ static void *promote_object(NurseryHeader *header, void *payload) {
     OldHeader *old_header = old_find_header(old_obj);
     if (old_header) old_header->tag = header->tag;
     header->forward = old_obj;
+    gc_stats.objects_promoted++;  // Track promoted objects
     return old_obj;
 }
 
@@ -210,6 +212,7 @@ static void *copy_young_object(void *ptr) {
     void *payload = (void*)(new_header + 1);
     memcpy(payload, old_header + 1, old_header->size);
     old_header->forward = payload;
+    gc_stats.objects_copied++;  // Track copied objects
     return payload;
 }
 
@@ -335,24 +338,68 @@ static void trace_roots_for_major(void) {
 
 static void scan_nursery(void) {
     unsigned char *scan = nursery_active;
+    size_t scanned = 0;
     while (scan < nursery_alloc) {
         NurseryHeader *header = (NurseryHeader*)scan;
         void *payload = (void*)(header + 1);
+        scanned++;
         if (header->trace) header->trace(payload);
         memcpy(scan, scan, 0); // suppress unused warning
         scan += sizeof(NurseryHeader) + header->size;
     }
+    gc_stats.objects_scanned += scanned;
     gc_stats.current_bytes = (nursery_alloc - nursery_active) + old_bytes_allocated;
 }
 
 static void minor_collect(void) {
     if (!generational_initialized || minor_collecting) return;
     minor_collecting = 1;
+    
+    // Start timing
+    double start_time = gc_get_time_ms();
+    
+    // Track objects before collection for survival rate
+    size_t objects_before = gc_stats.objects_copied + gc_stats.objects_promoted;
+    
     gc_stats.collections++;
     swap_nursery_spaces();
     trace_roots_for_minor();
     scan_nursery();
     remembered_cleanup();
+    
+    // Calculate survival rate (copied + promoted / scanned)
+    size_t objects_after = gc_stats.objects_copied + gc_stats.objects_promoted;
+    size_t survived_this_cycle = objects_after - objects_before;
+    if (gc_stats.objects_scanned > 0) {
+        gc_stats.survival_rate = (double)survived_this_cycle / (double)gc_stats.objects_scanned;
+    }
+    
+    // Calculate metadata overhead: nursery + old generation headers
+    size_t nursery_objects = 0;
+    unsigned char *scan = nursery_active;
+    while (scan < nursery_alloc) {
+        NurseryHeader *header = (NurseryHeader*)scan;
+        nursery_objects++;
+        scan += sizeof(NurseryHeader) + header->size;
+    }
+    
+    size_t old_gen_count = 0;
+    for (OldHeader *obj = old_objects; obj; obj = obj->next) {
+        old_gen_count++;
+    }
+    
+    gc_stats.metadata_bytes = (nursery_objects * sizeof(NurseryHeader)) + 
+                               (old_gen_count * sizeof(OldHeader));
+    
+    // End timing and update stats
+    double elapsed = gc_get_time_ms() - start_time;
+    gc_stats.last_gc_pause_ms = elapsed;
+    gc_stats.total_gc_time_ms += elapsed;
+    if (elapsed > gc_stats.max_gc_pause_ms) {
+        gc_stats.max_gc_pause_ms = elapsed;
+    }
+    gc_stats.avg_gc_pause_ms = gc_stats.total_gc_time_ms / gc_stats.collections;
+    
     minor_collecting = 0;
 }
 
@@ -361,6 +408,9 @@ static void sweep_old(void);
 
 static void major_collect(void) {
     if (major_collecting) return;
+    
+    // Note: minor_collect() already updates timing stats
+    // We only need to track that major collection is happening
     minor_collect();
     major_collecting = 1;
     mark_old_roots();
