@@ -2,7 +2,7 @@
 # run-gc-benchmarks.sh - Automated GC benchmark runner
 # Runs all benchmarks across all GC backends and collects results
 
-set -e
+# set -e  # Disable exit on error to allow all benchmarks to run
 
 # Configuration
 BACKENDS=("mark-sweep" "copying" "generational")

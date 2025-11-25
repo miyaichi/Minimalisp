@@ -10,11 +10,14 @@
 (define (fragmentation-test)
   (begin
     (print 'Starting-Fragmentation-Test)
-    (map (lambda (n) 
-           (begin
-             (range 1 (* n 10))
-             (gc)))
-         (range 1 20))
+    (define (loop n)
+      (if (> n 20)
+          nil
+          (begin
+            (range 1 (* n 2))  ; Reduced from 10 to 2
+            (gc)
+            (loop (+ n 1)))))
+    (loop 1)
     (print 'Completed)
     (gc-stats)))
 

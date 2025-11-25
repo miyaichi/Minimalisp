@@ -7,7 +7,7 @@
 
 // Simple semi-space copying collector: allocations occur in the active space,
 // collections copy reachable objects into the inactive space, then swap.
-#define DEFAULT_COPY_HEAP (2 * 1024 * 1024)
+#define DEFAULT_COPY_HEAP (8 * 1024 * 1024)
 
 // Each object is tagged with a payload size, trace hook, and forwarding pointer
 // (used during the copy phase to avoid duplicating an object).

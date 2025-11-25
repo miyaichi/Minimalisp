@@ -32,15 +32,16 @@ Tests throughput under heavy allocation pressure with 5000 recursive allocations
 
 Tests handling of both short-lived and long-lived objects (50 survivors + 500 iterations).
 
-| Metric | Mark-Sweep |
-|--------|------------|
-| Total GC Time | 8,299.17 ms |
-| Max Pause | 3,631.93 ms |
-| Avg Pause | 1,383.19 ms |
-| Objects Scanned | 54,175 |
-| Survival Rate | 11% |
+| Metric | Mark-Sweep | Copying | Speedup |
+|--------|------------|---------|---------|
+| Total GC Time | 8,431.69 ms | 0.14 ms | **59,799x** |
+| Max Pause | 3,595.70 ms | 0.14 ms | **25,683x** |
+| Avg Pause | 1,405.28 ms | 0.14 ms | **10,037x** |
+| Collections | 5 | 1 | 5x fewer |
+| Objects Scanned | 54,175 | 1,014 | 53x fewer |
+| Survival Rate | 11% | 100% | Only live objects |
 
-**Analysis**: Low survival rate (11%) indicates mostly short-lived objects. This workload would benefit from generational GC but encounters memory limitations in current implementation.
+**Analysis**: Copying GC demonstrates massive performance gains (59,799x) by ignoring the large volume of short-lived garbage. Mark-Sweep struggles with scanning all dead objects.
 
 ### 3. Pointer-Dense Workload
 

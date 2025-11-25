@@ -7,7 +7,7 @@
 
 // Nursery (young generation) size in bytes. Survivors that reach PROMOTE_AGE
 // are copied into the old generation managed by mark-sweep.
-#define DEFAULT_NURSERY_SIZE (512 * 1024)
+#define DEFAULT_NURSERY_SIZE (4 * 1024 * 1024)
 #define PROMOTE_AGE 2
 #define OLD_GROWTH_FACTOR 2.0
 
