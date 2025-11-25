@@ -12,7 +12,7 @@ from collections import defaultdict
 def parse_gc_stats(content):
     """Parse gc-stats output from benchmark log"""
     # Extract the Result line with gc-stats
-    result_match = re.search(r'Result: \(\((.*?)\)\)', content, re.DOTALL)
+    result_match = re.search(r'Result: \((.*)\)', content, re.DOTALL)
     if not result_match:
         return None
     

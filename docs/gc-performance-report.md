@@ -25,6 +25,7 @@ Tests throughput by creating many short-lived objects (cons cells).
 | Collections | 5 | 1 | 1 | 5x fewer |
 | Objects Scanned | 36,887 | 1,014 | 1,014 | 36x fewer |
 | Survival Rate | 80% | 100% | 100% | - |
+| Metadata | 723 KB | 32 KB | 32 KB | 22x less |
 
 **Analysis**: Copying and Generational GCs show immense performance gains. With sufficient heap size (32MB/16MB), they avoid frequent collections entirely, whereas Mark-Sweep triggers multiple expensive collections.
 
@@ -40,6 +41,7 @@ Tests handling of both short-lived and long-lived objects (50 survivors + 500 it
 | Collections | 6 | 1 | 1 | 6x fewer |
 | Objects Scanned | 54,175 | 1,014 | 1,014 | 53x fewer |
 | Survival Rate | 11% | 100% | 100% | - |
+| Metadata | 131 KB | 32 KB | 32 KB | 4x less |
 
 **Analysis**: Mark-Sweep struggles significantly with the large volume of short-lived garbage. Copying and Generational GCs, configured with larger heaps, handle this workload effortlessly.
 
@@ -55,6 +57,7 @@ Tests tracing performance with deep object graphs (binary tree depth 8).
 | Collections | 2 | 1 | 1 | 2x fewer |
 | Objects Scanned | 4,176 | 1,014 | 1,014 | 4x fewer |
 | Survival Rate | 48% | 100% | 100% | - |
+| Metadata | 63 KB | 32 KB | 32 KB | 2x less |
 
 **Analysis**: Even with deep graphs, the moving collectors outperform Mark-Sweep by orders of magnitude when memory is abundant.
 
@@ -70,6 +73,7 @@ Tests memory fragmentation patterns.
 | Collections | 2 | 1 | 1 | 2x fewer |
 | Objects Scanned | 4,354 | 1,014 | 1,014 | 4x fewer |
 | Survival Rate | 46% | 100% | 100% | - |
+| Metadata | 64 KB | 32 KB | 32 KB | 2x less |
 
 **Analysis**: Copying GC completely eliminates fragmentation by compacting live objects. Mark-Sweep incurs overhead from managing fragmented free lists.
 
@@ -85,6 +89,7 @@ Simulates a mix of list processing, mathematical operations, and temporary alloc
 | Collections | 3 | 1 | 1 | 3x fewer |
 | Objects Scanned | 10,657 | 1,014 | 1,014 | 10x fewer |
 | Survival Rate | 42% | 100% | 100% | - |
+| Metadata | 127 KB | 32 KB | 32 KB | 4x less |
 
 **Analysis**: In realistic scenarios, the moving collectors demonstrate superior throughput and lower latency, provided sufficient memory is available. Moderate survival rate indicates mixed object lifetimes.
 
