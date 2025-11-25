@@ -1,3 +1,3 @@
 Starting-Fragmentation-Test
 Completed
-Result: ((collections . 21) (allocated . 166003) (freed . 97949) (current . 68054) (total-gc-time-ms . 6097.51) (max-pause-ms . 397.495) (avg-pause-ms . 290.358) (last-pause-ms . 347.756) (objects-scanned . 30375) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.844215) (metadata-bytes . 70752))
+Result: ((collections . 21) (allocated . 166003) (freed . 97949) (current . 68054) (total-gc-time-ms . 5861.41) (max-pause-ms . 372.335) (avg-pause-ms . 279.115) (last-pause-ms . 363.831) (objects-scanned . 30375) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.844215) (metadata-bytes . 70752))

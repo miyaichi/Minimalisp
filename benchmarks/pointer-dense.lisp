@@ -13,7 +13,7 @@
     (print 'Starting-Pointer-Dense-Test)
     (print 'Building-Deep-Tree)
     (deep-tree 8)  ; Reduced from 10 to avoid excessive memory
-    (print 'Tree-Built)
+    (print 'Completed)
     (gc-stats)))
 
 ; Run the benchmark

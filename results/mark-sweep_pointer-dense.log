@@ -1,4 +1,4 @@
 Starting-Pointer-Dense-Test
 Building-Deep-Tree
-Tree-Built
-Result: ((collections . 2) (allocated . 145452) (freed . 50246) (current . 95206) (total-gc-time-ms . 730.944) (max-pause-ms . 483.519) (avg-pause-ms . 365.472) (last-pause-ms . 483.519) (objects-scanned . 4176) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.481105) (metadata-bytes . 63552))
+Completed
+Result: ((collections . 2) (allocated . 145450) (freed . 50245) (current . 95205) (total-gc-time-ms . 887.007) (max-pause-ms . 673.943) (avg-pause-ms . 443.503) (last-pause-ms . 673.943) (objects-scanned . 4176) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.481105) (metadata-bytes . 63552))
