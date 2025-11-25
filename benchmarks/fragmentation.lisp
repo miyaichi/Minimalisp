@@ -10,16 +10,17 @@
 (define (fragmentation-test)
   (begin
     (print 'Starting-Fragmentation-Test)
-    (define (loop n)
-      (if (> n 20)
-          nil
-          (begin
-            (range 1 (* n 2))  ; Reduced from 10 to 2
-            (gc)
-            (loop (+ n 1)))))
-    (loop 1)
+    (fragmentation-loop 1)
     (print 'Completed)
     (gc-stats)))
+
+(define (fragmentation-loop n)
+  (if (> n 20)
+      nil
+      (begin
+        (range 1 (* n 2))
+        (gc)
+        (fragmentation-loop (+ n 1)))))
 
 ; Run the benchmark
 (fragmentation-test)

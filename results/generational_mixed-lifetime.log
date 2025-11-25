@@ -1,3 +1,3 @@
 Starting-Mixed-Lifetime-Test
 Completed
-Result: ((collections . 2) (allocated . 2.74299e+06) (freed . 0) (current . 2.59092e+06) (total-gc-time-ms . 0.793) (max-pause-ms . 0.65) (avg-pause-ms . 0.3965) (last-pause-ms . 0.65) (objects-scanned . 29744) (objects-copied . 29744) (objects-promoted . 16) (survival-rate . 0.966447) (metadata-bytes . 920128))
+Result: ((collections . 2) (allocated . 2.74299e+06) (freed . 0) (current . 2.59092e+06) (total-gc-time-ms . 0.82) (max-pause-ms . 0.682) (avg-pause-ms . 0.41) (last-pause-ms . 0.682) (objects-scanned . 29744) (objects-copied . 29744) (objects-promoted . 16) (survival-rate . 0.966447) (metadata-bytes . 920128))
