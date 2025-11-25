@@ -1,1 +1,3 @@
 Starting-Fragmentation-Test
+Completed
+Result: ((collections . 1) (allocated . 165807) (freed . 0) (current . 301488) (total-gc-time-ms . 0.142) (max-pause-ms . 0.142) (avg-pause-ms . 0.142) (last-pause-ms . 0.142) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))

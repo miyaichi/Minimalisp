@@ -1,2 +1,3 @@
 Starting-Fragmentation-Test
-Error: Malformed expression list
+Completed
+Result: ((collections . 1) (allocated . 165807) (freed . 22552) (current . 301488) (total-gc-time-ms . 0.133) (max-pause-ms . 0.133) (avg-pause-ms . 0.133) (last-pause-ms . 0.133) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))

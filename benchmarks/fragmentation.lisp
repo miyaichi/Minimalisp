@@ -19,7 +19,6 @@
       nil
       (begin
         (range 1 (* n 2))
-        (gc)
         (fragmentation-loop (+ n 1)))))
 
 ; Run the benchmark
