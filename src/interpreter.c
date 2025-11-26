@@ -22,6 +22,7 @@ typedef enum {
     VAL_NIL,
     VAL_PAIR,
     VAL_SYMBOL,
+    VAL_STRING,
     VAL_BUILTIN,
     VAL_LAMBDA
 } ValueType;
@@ -55,7 +56,7 @@ static Value *const NIL = &NIL_VALUE;
 static Value *const TRUE = &TRUE_VALUE;
 
 // Simple token types
-enum {TOK_LPAREN, TOK_RPAREN, TOK_NUMBER, TOK_SYMBOL, TOK_QUOTE, TOK_EOF};
+enum {TOK_LPAREN, TOK_RPAREN, TOK_NUMBER, TOK_SYMBOL, TOK_QUOTE, TOK_STRING, TOK_EOF};
 
 typedef struct {
     int type;
@@ -127,6 +128,67 @@ static Token next_token(void) {
     if (c == '(') { t.type = TOK_LPAREN; t.text = "("; input_ptr++; return t; }
     if (c == ')') { t.type = TOK_RPAREN; t.text = ")"; input_ptr++; return t; }
     if (c == '\'') { t.type = TOK_QUOTE; t.text = "'"; input_ptr++; return t; }
+    if (c == '"') {
+        input_ptr++;
+        const char *scan = input_ptr;
+        size_t len = 0;
+        int escaping = 0;
+        int terminated = 0;
+        while (*scan) {
+            char ch = *scan++;
+            if (escaping) {
+                len++;
+                escaping = 0;
+                continue;
+            }
+            if (ch == '\\') {
+                escaping = 1;
+                continue;
+            }
+            if (ch == '"') {
+                terminated = 1;
+                break;
+            }
+            len++;
+        }
+        if (!terminated) {
+            runtime_error("Unterminated string literal");
+            t.type = TOK_EOF;
+            t.text = NULL;
+            return t;
+        }
+        char *buf = gc_alloc_buffer(len + 1);
+        size_t idx = 0;
+        escaping = 0;
+        const char *copy = input_ptr;
+        while (*copy) {
+            char ch = *copy++;
+            if (escaping) {
+                switch (ch) {
+                    case 'n': buf[idx++] = '\n'; break;
+                    case 't': buf[idx++] = '\t'; break;
+                    case '\\': buf[idx++] = '\\'; break;
+                    case '"': buf[idx++] = '"'; break;
+                    default: buf[idx++] = ch; break;
+                }
+                escaping = 0;
+                continue;
+            }
+            if (ch == '\\') {
+                escaping = 1;
+                continue;
+            }
+            if (ch == '"') {
+                break;
+            }
+            buf[idx++] = ch;
+        }
+        buf[idx] = '\0';
+        input_ptr = copy;
+        t.type = TOK_STRING;
+        t.text = buf;
+        return t;
+    }
     if (is_digit(c) || (c == '-' && is_digit(*(input_ptr + 1)))) {
         const char *start = input_ptr;
         input_ptr++;
@@ -211,6 +273,13 @@ static Value *make_symbol_copy(const char *text) {
     return v;
 }
 
+static Value *make_string_copy(const char *text) {
+    Value *v = alloc_value(VAL_STRING);
+    gc_set_tag(v, GC_TAG_VALUE_STRING);
+    v->symbol = gc_copy_cstring(text);
+    return v;
+}
+
 static Value *make_pair(Value *car, Value *cdr) {
     Value *v = alloc_value(VAL_PAIR);
     gc_set_tag(v, GC_TAG_VALUE_PAIR);
@@ -273,6 +342,13 @@ static void append_to_buffer(char *buffer, size_t size, const char *text) {
     strncat(buffer, text, size - len - 1);
 }
 
+static void append_char_to_buffer(char *buffer, size_t size, char ch) {
+    size_t len = strlen(buffer);
+    if (len + 1 >= size) return;
+    buffer[len] = ch;
+    buffer[len + 1] = '\0';
+}
+
 static void append_value_to_buffer(char *buffer, size_t size, Value *value);
 
 static void append_pair_to_buffer(char *buffer, size_t size, Value *value) {
@@ -303,6 +379,31 @@ static void append_value_to_buffer(char *buffer, size_t size, Value *value) {
             break;
         case VAL_SYMBOL:
             append_to_buffer(buffer, size, value->symbol ? value->symbol : "#<symbol>");
+            break;
+        case VAL_STRING:
+            append_char_to_buffer(buffer, size, '"');
+            if (value->symbol) {
+                for (const char *p = value->symbol; *p; ++p) {
+                    switch (*p) {
+                        case '\\':
+                            append_to_buffer(buffer, size, "\\\\");
+                            break;
+                        case '"':
+                            append_to_buffer(buffer, size, "\\\"");
+                            break;
+                        case '\n':
+                            append_to_buffer(buffer, size, "\\n");
+                            break;
+                        case '\t':
+                            append_to_buffer(buffer, size, "\\t");
+                            break;
+                        default:
+                            append_char_to_buffer(buffer, size, *p);
+                            break;
+                    }
+                }
+            }
+            append_char_to_buffer(buffer, size, '"');
             break;
         case VAL_PAIR:
             append_pair_to_buffer(buffer, size, value);
@@ -412,6 +513,10 @@ static Value *read_form(void) {
         consume(TOK_SYMBOL);
         if (strcmp(sym, "nil") == 0) return NIL;
         return make_symbol_copy(sym);
+    } else if (cur_token.type == TOK_STRING) {
+        char *str = cur_token.text;
+        consume(TOK_STRING);
+        return make_string_copy(str);
     } else if (cur_token.type == TOK_LPAREN) {
         consume(TOK_LPAREN);
         return read_list();
@@ -475,6 +580,7 @@ static Value *builtin_div(Value **args, int argc, Env *env) {
 }
 
 static Value *builtin_print(Value **args, int argc, Env *env);
+static Value *builtin_princ(Value **args, int argc, Env *env);
 static Value *builtin_cons(Value **args, int argc, Env *env);
 static Value *builtin_car(Value **args, int argc, Env *env);
 static Value *builtin_cdr(Value **args, int argc, Env *env);
@@ -487,6 +593,20 @@ static Value *builtin_gte(Value **args, int argc, Env *env);
 static Value *builtin_gc(Value **args, int argc, Env *env);
 static Value *builtin_gc_threshold(Value **args, int argc, Env *env);
 static Value *builtin_gc_stats(Value **args, int argc, Env *env);
+static Value *builtin_atom(Value **args, int argc, Env *env);
+static Value *builtin_format(Value **args, int argc, Env *env);
+
+static void princ_emit_value(Value *value) {
+    if (!value) {
+        print_value(NIL);
+        return;
+    }
+    if (value->type == VAL_STRING) {
+        if (value->symbol) fputs(value->symbol, stdout);
+    } else {
+        print_value(value);
+    }
+}
 
 static Value *builtin_print(Value **args, int argc, Env *env) {
     (void)env;
@@ -497,6 +617,63 @@ static Value *builtin_print(Value **args, int argc, Env *env) {
         append_value_to_buffer(line, sizeof(line), args[i]);
     }
     emit_console_line(line);
+    return NIL;
+}
+
+static Value *builtin_princ(Value **args, int argc, Env *env) {
+    (void)env;
+    Value *result = NIL;
+    for (int i = 0; i < argc; ++i) {
+        princ_emit_value(args[i]);
+        result = args[i] ? args[i] : NIL;
+    }
+    fflush(stdout);
+    return result;
+}
+
+static Value *builtin_format(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc < 2) runtime_error("format expects a destination and control string");
+    Value *dest = args[0];
+    Value *control = args[1];
+    if (!control || control->type != VAL_STRING) runtime_error("format control must be a string");
+    if (!dest || dest->type != VAL_SYMBOL || !dest->symbol || strcmp(dest->symbol, "t") != 0) {
+        runtime_error("format currently only supports destination t");
+    }
+    const char *fmt = control->symbol ? control->symbol : "";
+    int arg_index = 2;
+    for (const char *p = fmt; *p;) {
+        char ch = *p++;
+        if (ch != '~') {
+            fputc(ch, stdout);
+            continue;
+        }
+        if (!*p) runtime_error("format directive missing specifier");
+        char directive = *p++;
+        if (directive == '%') {
+            fputc('\n', stdout);
+            continue;
+        }
+        if (directive == '~') {
+            fputc('~', stdout);
+            continue;
+        }
+        if (directive == 'v') {
+            if (!*p || !*(p + 1) || *p != '@' || *(p + 1) != 't') {
+                runtime_error("format only supports ~v@t");
+            }
+            p += 2;
+            if (arg_index >= argc) runtime_error("format missing argument for ~v@t");
+            Value *width_val = args[arg_index++];
+            if (!width_val || width_val->type != VAL_NUMBER) runtime_error("format ~v@t expects a number");
+            int width = (int)width_val->number;
+            if (width < 0) width = 0;
+            for (int i = 0; i < width; ++i) fputc(' ', stdout);
+            continue;
+        }
+        runtime_error("Unsupported format directive: ~%c", directive);
+    }
+    fflush(stdout);
     return NIL;
 }
 
@@ -530,6 +707,15 @@ static Value *builtin_list(Value **args, int argc, Env *env) {
         tail = &node->cdr;
     }
     return head;
+}
+
+static Value *builtin_atom(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 1) runtime_error("atom expects one argument");
+    Value *arg = args[0];
+    if (!arg || is_nil(arg)) return TRUE;
+    if (arg->type == VAL_PAIR) return NIL;
+    return TRUE;
 }
 
 static Value *compare_chain(Value **args, int argc, int (*cmp)(double, double), const char *name) {
@@ -656,10 +842,13 @@ static void init_builtins(Env *env) {
     install_builtin(env, "*", builtin_mul);
     install_builtin(env, "/", builtin_div);
     install_builtin(env, "print", builtin_print);
+    install_builtin(env, "princ", builtin_princ);
+    install_builtin(env, "format", builtin_format);
     install_builtin(env, "cons", builtin_cons);
     install_builtin(env, "car", builtin_car);
     install_builtin(env, "cdr", builtin_cdr);
     install_builtin(env, "list", builtin_list);
+    install_builtin(env, "atom", builtin_atom);
     install_builtin(env, "=", builtin_eq);
     install_builtin(env, "<", builtin_lt);
     install_builtin(env, ">", builtin_gt);
@@ -693,6 +882,7 @@ static Value *eval_value(Value *expr, Env *env) {
     switch (expr->type) {
         case VAL_NUMBER:
         case VAL_NIL:
+        case VAL_STRING:
         case VAL_LAMBDA:
         case VAL_BUILTIN:
             return expr;
@@ -843,15 +1033,30 @@ static Value *eval_source(const char *src, int *out_error) {
 
 static void trace_binding(void *obj) {
     Binding *binding = (Binding*)obj;
-    if (binding->name) binding->name = (const char*)gc_mark_ptr((void*)binding->name);
-    if (binding->value) binding->value = gc_mark_ptr(binding->value);
-    if (binding->next) binding->next = (Binding*)gc_mark_ptr(binding->next);
+    if (binding->name) {
+        void *marked = gc_mark_ptr((void*)binding->name);
+        if (marked) binding->name = (const char*)marked;
+    }
+    if (binding->value) {
+        void *marked = gc_mark_ptr(binding->value);
+        if (marked) binding->value = marked;
+    }
+    if (binding->next) {
+        void *marked = gc_mark_ptr(binding->next);
+        if (marked) binding->next = (Binding*)marked;
+    }
 }
 
 static void trace_env(void *obj) {
     Env *env = (Env*)obj;
-    if (env->parent) env->parent = (Env*)gc_mark_ptr(env->parent);
-    if (env->bindings) env->bindings = (Binding*)gc_mark_ptr(env->bindings);
+    if (env->parent) {
+        void *marked = gc_mark_ptr(env->parent);
+        if (marked) env->parent = (Env*)marked;
+    }
+    if (env->bindings) {
+        void *marked = gc_mark_ptr(env->bindings);
+        if (marked) env->bindings = (Binding*)marked;
+    }
 }
 
 static void trace_value(void *obj) {
@@ -862,7 +1067,11 @@ static void trace_value(void *obj) {
             if (value->cdr) value->cdr = gc_mark_ptr(value->cdr);
             break;
         case VAL_SYMBOL:
-            if (value->symbol) value->symbol = (char*)gc_mark_ptr(value->symbol);
+        case VAL_STRING:
+            if (value->symbol) {
+                void *marked = gc_mark_ptr(value->symbol);
+                if (marked) value->symbol = (char*)marked;
+            }
             break;
         case VAL_LAMBDA:
             if (value->params) value->params = gc_mark_ptr(value->params);
@@ -885,6 +1094,20 @@ void print_value(Value *value) {
         printf("%g", value->number);
     } else if (value->type == VAL_SYMBOL) {
         printf("%s", value->symbol);
+    } else if (value->type == VAL_STRING) {
+        printf("\"");
+        if (value->symbol) {
+            for (const char *p = value->symbol; *p; ++p) {
+                switch (*p) {
+                    case '\\': printf("\\\\"); break;
+                    case '"': printf("\\\""); break;
+                    case '\n': printf("\\n"); break;
+                    case '\t': printf("\\t"); break;
+                    default: putchar(*p); break;
+                }
+            }
+        }
+        printf("\"");
     } else if (value->type == VAL_PAIR) {
         print_pair(value);
     } else if (value->type == VAL_BUILTIN) {
