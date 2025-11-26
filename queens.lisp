@@ -1,3 +1,4 @@
+; queens.lisp - N-Queens problem solver
 (define (safe? column queens offset)
   (if (null? queens)
       't
