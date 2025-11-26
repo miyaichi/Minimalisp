@@ -176,6 +176,8 @@ Minimalisp ships with multiple pluggable tracing collectors that all share the s
 
 Select a backend at runtime with `GC_BACKEND=mark-sweep|copying|generational make test-native` or via the dropdown in `web/index.html`. Every backend supports tagging (`gc_set_tag`) and heap snapshots (`gc_heap_snapshot`), which feed the Canvas visualizer so you can see fragmentation vs. compaction in real time. New algorithms belong under `src/gc/` and only need to implement the `GcBackend` vtable to plug into the rest of the interpreter.
 
+For a deeper dive into each collector’s design and trade-offs, see [`docs/gc-algorithms.md`](docs/gc-algorithms.md).
+
 ### GC Performance Benchmarks
 
 A comprehensive benchmark suite is available to analyze and compare GC performance:
