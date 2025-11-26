@@ -88,6 +88,13 @@ def analyze_results(results_dir):
                 ('objects-copied', 'Objects Copied'),
                 ('survival-rate', 'Survival Rate'),
                 ('metadata-bytes', 'Metadata (bytes)'),
+                ('largest-free-block', 'Largest Free Block'),
+                ('total-free-memory', 'Total Free Mem'),
+                ('free-blocks-count', 'Free Blocks'),
+                ('fragmentation-index', 'Frag. Index'),
+                ('wasted-bytes', 'Wasted Bytes'),
+                ('internal-fragmentation-ratio', 'Int. Frag. Ratio'),
+                ('average-padding-per-object', 'Avg Padding/Obj'),
             ]
             
             for key, label in metrics:

@@ -1,4 +1,4 @@
 Starting-Pointer-Dense-Test
 Building-Deep-Tree
 Completed
-Result: ((collections . 2) (allocated . 145450) (freed . 50245) (current . 95205) (total-gc-time-ms . 652.357) (max-pause-ms . 448.817) (avg-pause-ms . 326.178) (last-pause-ms . 448.817) (objects-scanned . 4176) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.481105) (metadata-bytes . 63552))
+Result: ((collections . 1) (allocated . 145756) (freed . 8229) (current . 137527) (largest-free-block . 3.8575e+06) (total-free-memory . 3.85972e+06) (free-blocks-count . 48) (average-free-block-size . 80410.8) (fragmentation-index . 0.000574135) (wasted-bytes . 197057) (internal-fragmentation-ratio . 0.588961) (average-padding-per-object . 56.7071) (peak-fragmentation-index . 0.000574135) (fragmentation-growth-rate . 0) (total-gc-time-ms . 0.36) (max-pause-ms . 0.36) (avg-pause-ms . 0.36) (last-pause-ms . 0.36) (objects-scanned . 1433) (objects-copied . 0) (objects-promoted . 0) (survival-rate . 0.713887) (metadata-bytes . 57288))

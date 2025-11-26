@@ -288,6 +288,49 @@ static size_t copy_get_threshold(void) {
 
 static void copy_get_stats(GcStats *out_stats) {
     if (out_stats) *out_stats = copy_stats;
+
+    // Derived metrics
+    size_t free_mem = 0;
+    if (alloc_end && alloc_ptr) free_mem = alloc_end - alloc_ptr;
+    
+    out_stats->largest_free_block = free_mem;
+    out_stats->total_free_memory = free_mem;
+    out_stats->free_blocks_count = (free_mem > 0) ? 1 : 0;
+    out_stats->average_free_block_size = (double)free_mem;
+    out_stats->fragmentation_index = 0.0;
+    
+    // Internal fragmentation
+    size_t wasted = 0;
+    size_t obj_count = 0;
+    if (active_space && alloc_ptr) {
+        unsigned char *scan = active_space;
+        while (scan < alloc_ptr) {
+            CopyHeader *h = (CopyHeader*)scan;
+            wasted += sizeof(CopyHeader);
+            obj_count++;
+            scan += sizeof(CopyHeader) + h->size;
+        }
+    }
+    out_stats->wasted_bytes = wasted;
+    
+    // Internal fragmentation ratio
+    size_t payload = (alloc_ptr - active_space) - wasted;
+    size_t total_allocated = payload + wasted;
+    
+    if (total_allocated > 0) {
+        out_stats->internal_fragmentation_ratio = (double)wasted / (double)total_allocated;
+    } else {
+        out_stats->internal_fragmentation_ratio = 0.0;
+    }
+    
+    if (obj_count > 0) {
+        out_stats->average_padding_per_object = (double)wasted / (double)obj_count;
+    } else {
+        out_stats->average_padding_per_object = 0.0;
+    }
+    
+    out_stats->peak_fragmentation_index = 0.0;
+    out_stats->fragmentation_growth_rate = 0.0;
 }
 
 static double copy_get_collections_count(void) { return (double)copy_stats.collections; }

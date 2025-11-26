@@ -53,6 +53,20 @@ typedef struct {
     // Memory efficiency metrics (Phase 3)
     double survival_rate;         // Live objects / scanned objects
     size_t metadata_bytes;        // Bytes used for GC metadata
+
+    // Fragmentation metrics
+    size_t largest_free_block;    // Size of the largest contiguous free block
+    size_t total_free_memory;     // Total free memory available
+    size_t free_blocks_count;     // Number of free blocks (holes)
+    double average_free_block_size; // Average size of free blocks
+    double fragmentation_index;   // 1 - (largest_free / total_free)
+
+    size_t wasted_bytes;          // Memory allocated but not used (headers, padding)
+    double internal_fragmentation_ratio; // wasted_bytes / allocated_bytes
+    double average_padding_per_object;   // Average wasted bytes per object
+
+    double peak_fragmentation_index; // Max fragmentation index observed
+    double fragmentation_growth_rate; // Rate of fragmentation increase over time
 } GcStats;
 
 // Initialize the garbage collector. Must be called before any allocation.

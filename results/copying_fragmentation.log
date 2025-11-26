@@ -1,3 +1,3 @@
 Starting-Fragmentation-Test
 Completed
-Result: ((collections . 1) (allocated . 165807) (freed . 22552) (current . 301488) (total-gc-time-ms . 0.134) (max-pause-ms . 0.134) (avg-pause-ms . 0.134) (last-pause-ms . 0.134) (objects-scanned . 1014) (objects-copied . 1014) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32448))
+Result: ((collections . 1) (allocated . 166113) (freed . 22552) (current . 302088) (largest-free-block . 3.32523e+07) (total-free-memory . 3.32523e+07) (free-blocks-count . 1) (average-free-block-size . 3.32523e+07) (fragmentation-index . 0) (wasted-bytes . 139904) (internal-fragmentation-ratio . 0.463123) (average-padding-per-object . 32) (peak-fragmentation-index . 0) (fragmentation-growth-rate . 0) (total-gc-time-ms . 0.445) (max-pause-ms . 0.445) (avg-pause-ms . 0.445) (last-pause-ms . 0.445) (objects-scanned . 1023) (objects-copied . 1023) (objects-promoted . 0) (survival-rate . 1) (metadata-bytes . 32736))

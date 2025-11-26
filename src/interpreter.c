@@ -475,7 +475,7 @@ static Value *env_lookup(Env *env, const char *name) {
     for (Env *e = env; e; e = e->parent) {
         Binding *b = e->bindings;
         while (b) {
-            if (strcmp(b->name, name) == 0) {
+            if (b->name && strcmp(b->name, name) == 0) {
                 return b->value;
             }
             b = b->next;
@@ -795,6 +795,37 @@ static Value *builtin_gc_stats(Value **args, int argc, Env *env) {
     Value *total_time_pair = make_pair(make_symbol_copy("total-gc-time-ms"), make_number(stats.total_gc_time_ms));
     list = make_pair(total_time_pair, list);
 
+    // Fragmentation metrics
+    Value *frag_growth_pair = make_pair(make_symbol_copy("fragmentation-growth-rate"), make_number(stats.fragmentation_growth_rate));
+    list = make_pair(frag_growth_pair, list);
+
+    Value *peak_frag_pair = make_pair(make_symbol_copy("peak-fragmentation-index"), make_number(stats.peak_fragmentation_index));
+    list = make_pair(peak_frag_pair, list);
+
+    Value *avg_padding_pair = make_pair(make_symbol_copy("average-padding-per-object"), make_number(stats.average_padding_per_object));
+    list = make_pair(avg_padding_pair, list);
+
+    Value *internal_frag_pair = make_pair(make_symbol_copy("internal-fragmentation-ratio"), make_number(stats.internal_fragmentation_ratio));
+    list = make_pair(internal_frag_pair, list);
+
+    Value *wasted_pair = make_pair(make_symbol_copy("wasted-bytes"), make_number((double)stats.wasted_bytes));
+    list = make_pair(wasted_pair, list);
+
+    Value *frag_index_pair = make_pair(make_symbol_copy("fragmentation-index"), make_number(stats.fragmentation_index));
+    list = make_pair(frag_index_pair, list);
+
+    Value *avg_free_pair = make_pair(make_symbol_copy("average-free-block-size"), make_number(stats.average_free_block_size));
+    list = make_pair(avg_free_pair, list);
+
+    Value *free_blocks_pair = make_pair(make_symbol_copy("free-blocks-count"), make_number((double)stats.free_blocks_count));
+    list = make_pair(free_blocks_pair, list);
+
+    Value *total_free_pair = make_pair(make_symbol_copy("total-free-memory"), make_number((double)stats.total_free_memory));
+    list = make_pair(total_free_pair, list);
+
+    Value *largest_free_pair = make_pair(make_symbol_copy("largest-free-block"), make_number((double)stats.largest_free_block));
+    list = make_pair(largest_free_pair, list);
+
     Value *current_pair = make_pair(make_symbol_copy("current"), make_number((double)stats.current_bytes));
     list = make_pair(current_pair, list);
 
@@ -893,11 +924,15 @@ static Value *eval_value(Value *expr, Env *env) {
             if (!op) return NIL;
             if (op->type == VAL_SYMBOL) {
                 const char *name = op->symbol;
+                if (!name) {
+                    runtime_error("Symbol name is NULL");
+                    return NIL;
+                }
                 Value *args = expr->cdr;
-                if (strcmp(name, "quote") == 0) {
+                if (name && strcmp(name, "quote") == 0) {
                     if (is_nil(args)) runtime_error("quote expects an argument");
                     return args->car;
-                } else if (strcmp(name, "define") == 0) {
+                } else if (name && strcmp(name, "define") == 0) {
                     if (is_nil(args)) runtime_error("define expects a symbol or list");
                     Value *target = args->car;
                     Value *value_exprs = args->cdr;
@@ -919,13 +954,13 @@ static Value *eval_value(Value *expr, Env *env) {
                     } else {
                         runtime_error("define expects a symbol or (name args)");
                     }
-                } else if (strcmp(name, "lambda") == 0) {
+                } else if (name && strcmp(name, "lambda") == 0) {
                     if (is_nil(args)) runtime_error("lambda expects parameters");
                     Value *params = args->car;
                     Value *body = args->cdr;
                     if (is_nil(body)) runtime_error("lambda body cannot be empty");
                     return make_lambda(params, body, env);
-                } else if (strcmp(name, "if") == 0) {
+                } else if (name && strcmp(name, "if") == 0) {
                     Value *test_expr = args ? args->car : NIL;
                     Value *rest = args ? args->cdr : NIL;
                     Value *then_expr = rest ? rest->car : NIL;
@@ -937,7 +972,7 @@ static Value *eval_value(Value *expr, Env *env) {
                         if (!is_nil(else_expr)) return eval_value(else_expr, env);
                         return NIL;
                     }
-                } else if (strcmp(name, "begin") == 0) {
+                } else if (name && strcmp(name, "begin") == 0) {
                     return eval_sequence(args, env);
                 }
             }
