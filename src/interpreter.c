@@ -861,6 +861,11 @@ static Value *builtin_load(Value **args, int argc, Env *env) {
     return result ? result : NIL;
 }
 
+static Value *builtin_eval(Value **args, int argc, Env *env) {
+    if (argc != 1) runtime_error("eval expects one argument");
+    return eval_value(args[0], env);
+}
+
 static void install_builtin(Env *env, const char *name, BuiltinFunc fn) {
     env_define(env, name, make_builtin(fn));
 }
@@ -889,6 +894,7 @@ static void init_builtins(Env *env) {
     install_builtin(env, "gc-threshold", builtin_gc_threshold);
     install_builtin(env, "gc-stats", builtin_gc_stats);
     install_builtin(env, "load", builtin_load);
+    install_builtin(env, "eval", builtin_eval);
 }
 
 static void runtime_init(void) {
