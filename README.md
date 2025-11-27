@@ -27,7 +27,7 @@
 - Minimal Lisp syntax with numbers, symbols, quoting (`'`/`quote`), and flexible list literals via `cons`/`list`.
 - Primitive list toolkit plus user‑defined procedures: `define`, `lambda`, `if`, `eval`, and `begin` provide recursion, dynamic evaluation, and sequencing.
 - Shared Lisp standard library (`standard-lib.lisp`) loaded at startup in both native and WASM builds so helpers such as `append`, `map`, `foldl`, and predicates live in Lisp space.
-- Interactive REPL and script runner (`./interpreter -f file.lisp`) ready for experimentation; see `hanoi.lisp` for a Tower of Hanoi example.
+- interactive REPL and script runner (`./interpreter -f file.lisp`) are available for experimentation. See the .lisp files for the Tower of Hanoi(`hanoi.lisp`), N-Queens(`queens.lisp`), and the Tarai (Takeuchi) function(`tarai.lisp`).
 - Automatic garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
 - Abstract GC API (`include/gc.h` + `src/gc/*`) with swappable backends (mark‑sweep by default, copying GC via `GC_BACKEND=copying`).
