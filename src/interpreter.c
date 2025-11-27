@@ -65,8 +65,7 @@ typedef struct {
 
 static const char *input_ptr;
 static Token cur_token;
-static jmp_buf eval_jmp_buf;
-static int eval_jmp_active = 0;
+static jmp_buf *eval_jmp_env = NULL;
 
 static Env *global_env = NULL;
 static int runtime_initialized = 0;
@@ -225,8 +224,8 @@ static void runtime_error(const char *fmt, ...) {
     vfprintf(stderr, fmt, args);
     va_end(args);
     fprintf(stderr, "\n");
-    if (eval_jmp_active) {
-        longjmp(eval_jmp_buf, 1);
+    if (eval_jmp_env) {
+        longjmp(*eval_jmp_env, 1);
     }
 }
 
@@ -415,7 +414,22 @@ static void append_value_to_buffer(char *buffer, size_t size, Value *value) {
             append_to_buffer(buffer, size, "#<builtin>");
             break;
         case VAL_LAMBDA:
-            append_to_buffer(buffer, size, "#<lambda>");
+            append_to_buffer(buffer, size, "(lambda ");
+            append_value_to_buffer(buffer, size, value->params);
+            if (value->body && !is_nil(value->body)) {
+                append_to_buffer(buffer, size, " ");
+                Value *b = value->body;
+                while (b && b->type == VAL_PAIR) {
+                    append_value_to_buffer(buffer, size, b->car);
+                    b = b->cdr;
+                    if (b && !is_nil(b)) append_to_buffer(buffer, size, " ");
+                }
+                if (b && !is_nil(b)) {
+                    append_to_buffer(buffer, size, " . ");
+                    append_value_to_buffer(buffer, size, b);
+                }
+            }
+            append_to_buffer(buffer, size, ")");
             break;
         default:
             append_to_buffer(buffer, size, "#<unknown>");
@@ -841,6 +855,16 @@ static Value *builtin_gc_stats(Value **args, int argc, Env *env) {
     return list;
 }
 
+static Value *builtin_procedure_source(Value **args, int argc, Env *env) {
+    (void)env;
+    if (argc != 1) runtime_error("procedure-source expects one argument");
+    Value *proc = args[0];
+    if (!proc || proc->type != VAL_LAMBDA) return NIL;
+    
+    Value *sym_lambda = make_symbol_copy("lambda");
+    return make_pair(sym_lambda, make_pair(proc->params, proc->body));
+}
+
 static Value *builtin_load(Value **args, int argc, Env *env) {
     (void)env;
     if (argc != 1) runtime_error("load expects one argument");
@@ -893,6 +917,7 @@ static void init_builtins(Env *env) {
     install_builtin(env, "gc", builtin_gc);
     install_builtin(env, "gc-threshold", builtin_gc_threshold);
     install_builtin(env, "gc-stats", builtin_gc_stats);
+    install_builtin(env, "procedure-source", builtin_procedure_source);
     install_builtin(env, "load", builtin_load);
     install_builtin(env, "eval", builtin_eval);
 }
@@ -1046,11 +1071,20 @@ static Value *eval_sequence(Value *exprs, Env *env) {
 static Value *eval_source(const char *src, int *out_error) {
     runtime_init();
     Value *result = NIL;
-    eval_jmp_active = 1;
-    if (setjmp(eval_jmp_buf) == 0) {
+    
+    // Save state for re-entrancy
+    const char *saved_input = input_ptr;
+    Token saved_token = cur_token;
+    jmp_buf *saved_jmp_env = eval_jmp_env;
+    int saved_sp = temp_root_sp;
+    
+    jmp_buf local_jmp_buf;
+    eval_jmp_env = &local_jmp_buf;
+    
+    if (setjmp(local_jmp_buf) == 0) {
         input_ptr = src;
         cur_token = next_token();
-        temp_root_sp = 0; // Reset temp roots at top level
+        // temp_root_sp = 0; // Don't reset, preserve caller's roots
         while (cur_token.type != TOK_EOF) {
             Value *form = read_form();
             push_root(form);
@@ -1059,9 +1093,14 @@ static Value *eval_source(const char *src, int *out_error) {
         }
         if (out_error) *out_error = 0;
     } else {
+        temp_root_sp = saved_sp; // Restore stack on error
         if (out_error) *out_error = 1;
     }
-    eval_jmp_active = 0;
+    
+    // Restore state
+    input_ptr = saved_input;
+    cur_token = saved_token;
+    eval_jmp_env = saved_jmp_env;
     if (!out_error || !*out_error) {
         gc_add_root((void**)&result);
         gc_collect();
@@ -1154,7 +1193,22 @@ void print_value(Value *value) {
     } else if (value->type == VAL_BUILTIN) {
         printf("#<builtin>");
     } else if (value->type == VAL_LAMBDA) {
-        printf("#<lambda>");
+        printf("(lambda ");
+        print_value(value->params);
+        if (value->body && !is_nil(value->body)) {
+            printf(" ");
+            Value *b = value->body;
+            while (b && b->type == VAL_PAIR) {
+                print_value(b->car);
+                b = b->cdr;
+                if (b && !is_nil(b)) printf(" ");
+            }
+            if (b && !is_nil(b)) {
+                printf(" . ");
+                print_value(b);
+            }
+        }
+        printf(")");
     } else {
         printf("<unknown>");
     }
