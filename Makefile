@@ -2,7 +2,11 @@
 WASM_CC ?= emcc
 WASM_CFLAGS ?= -O2 -Iinclude -s WASM=1 -s ALLOW_MEMORY_GROWTH=1 -s STACK_SIZE=5242880 -s EXPORTED_FUNCTIONS='["_eval", "_gc_get_collections_count", "_gc_get_allocated_bytes", "_gc_get_freed_bytes", "_gc_get_current_bytes", "_gc_heap_snapshot", "_gc_heap_snapshot_flat", "_gc_get_stats_flat", "_gc_heap_snapshot_entry_size", "_gc_heap_snapshot_addr_offset", "_gc_heap_snapshot_size_offset", "_gc_heap_snapshot_generation_offset", "_gc_heap_snapshot_tag_offset", "_gc_set_backend_env", "_form_needs_more_input", "_malloc", "_free"]' -s EXPORTED_RUNTIME_METHODS='["cwrap"]'
 NATIVE_CC ?= gcc
-NATIVE_CFLAGS ?= -Iinclude -lm -Wl,-stack_size,0x4000000
+UNAME_S := $(shell uname -s)
+NATIVE_CFLAGS ?= -Iinclude -lm
+ifeq ($(UNAME_S),Darwin)
+	NATIVE_CFLAGS += -Wl,-stack_size,0x4000000
+endif
 SRC = src/interpreter.c src/gc/gc_runtime.c src/gc/mark_sweep.c src/gc/copying.c src/gc/generational.c
 WASM_DIR = web
 EM_CACHE ?= $(abspath .emscripten-cache)
