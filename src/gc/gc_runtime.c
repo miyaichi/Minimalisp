@@ -167,6 +167,36 @@ size_t gc_heap_snapshot_flat(uint32_t *out, size_t capacity) {
     return written;
 }
 
+void gc_get_stats_flat(double *out, size_t size) {
+    if (!out || size < 23) return;
+    GcStats stats;
+    gc_get_stats(&stats);
+    
+    out[0] = (double)stats.collections;
+    out[1] = (double)stats.allocated_bytes;
+    out[2] = (double)stats.freed_bytes;
+    out[3] = (double)stats.current_bytes;
+    out[4] = stats.total_gc_time_ms;
+    out[5] = stats.max_gc_pause_ms;
+    out[6] = stats.avg_gc_pause_ms;
+    out[7] = stats.last_gc_pause_ms;
+    out[8] = (double)stats.objects_scanned;
+    out[9] = (double)stats.objects_copied;
+    out[10] = (double)stats.objects_promoted;
+    out[11] = stats.survival_rate;
+    out[12] = (double)stats.metadata_bytes;
+    out[13] = (double)stats.largest_free_block;
+    out[14] = (double)stats.total_free_memory;
+    out[15] = (double)stats.free_blocks_count;
+    out[16] = stats.average_free_block_size;
+    out[17] = stats.fragmentation_index;
+    out[18] = (double)stats.wasted_bytes;
+    out[19] = stats.internal_fragmentation_ratio;
+    out[20] = stats.average_padding_per_object;
+    out[21] = stats.peak_fragmentation_index;
+    out[22] = stats.fragmentation_growth_rate;
+}
+
 size_t gc_heap_snapshot_entry_size(void) {
     return sizeof(GcObjectInfo);
 }

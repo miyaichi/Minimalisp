@@ -169,6 +169,10 @@
     </div>
     <p>The canvas maps the WASM linear memory, highlighting allocated objects. Copying/Generational GC compact nursery
       objects; mark-sweep tends to fragment over time.</p>
+    <div class="stats-panel">
+      <h3>GC Stats</h3>
+      <div id="gcStats" style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; font-size: 0.85rem;"></div>
+    </div>
   </div>
   <script src="interpreter.js"></script>
   <script>
@@ -281,6 +285,58 @@
       snapshotHeap();
     }
 
+    // Stats update logic
+    let statsPtr = 0;
+    let getStatsFlat = null;
+    const statsDiv = document.getElementById('gcStats');
+
+    const STAT_LABELS = [
+      "Collections", "Allocated Bytes", "Freed Bytes", "Current Bytes",
+      "Total GC Time (ms)", "Max Pause (ms)", "Avg Pause (ms)", "Last Pause (ms)",
+      "Objects Scanned", "Objects Copied", "Objects Promoted", "Survival Rate",
+      "Metadata Bytes", "Largest Free Block", "Total Free Memory", "Free Blocks Count",
+      "Avg Free Block Size", "Fragmentation Index", "Wasted Bytes", "Internal Frag Ratio",
+      "Avg Padding/Obj", "Peak Frag Index", "Frag Growth Rate"
+    ];
+
+    function updateStats() {
+      if (!getStatsFlat || !statsPtr) return;
+
+      let heapF64 = Module.HEAPF64;
+      if (!heapF64) {
+        // Try to find HEAPU8 on Module or global scope
+        const heapU8 = Module.HEAPU8 || (typeof HEAPU8 !== 'undefined' ? HEAPU8 : null);
+        if (heapU8) {
+          heapF64 = new Float64Array(heapU8.buffer);
+        } else {
+          return;
+        }
+      }
+
+      getStatsFlat(statsPtr, 23);
+      // Re-create view in case buffer was resized/detached
+      const stats = new Float64Array(heapF64.buffer, statsPtr, 23);
+      let html = '';
+      for (let i = 0; i < 23; i++) {
+        let val = stats[i];
+        if (i === 1 || i === 2 || i === 3 || i === 12 || i === 13 || i === 14 || i === 18) {
+          // Bytes
+          val = val.toLocaleString();
+        } else if (i >= 4 && i <= 7) {
+          // Time
+          val = val.toFixed(2);
+        } else if (i === 11 || i === 17 || i === 19 || i === 21 || i === 22) {
+          // Ratios
+          val = val.toFixed(4);
+        } else if (i === 16 || i === 20) {
+          // Averages
+          val = val.toFixed(2);
+        }
+        html += `<div><span style="color:#888">${STAT_LABELS[i]}:</span> <span style="font-family:monospace">${val}</span></div>`;
+      }
+      statsDiv.innerHTML = html;
+    }
+
     Module['onRuntimeInitialized'] = () => {
       Module.print = (text) => logLine(text, 'output');
       Module.printErr = (text) => logLine(text, 'error');
@@ -288,6 +344,10 @@
       snapshotFunc = Module.cwrap('gc_heap_snapshot', 'number', ['number', 'number']);
       snapshotFlatFunc = Module.cwrap('gc_heap_snapshot_flat', 'number', ['number', 'number']);
       backendSetter = Module.cwrap('gc_set_backend_env', null, ['string']);
+
+      statsPtr = Module._malloc(23 * 8);
+      getStatsFlat = Module.cwrap('gc_get_stats_flat', null, ['number', 'number']);
+
       backendSetter(currentBackend);
 
       logLine('Minimalisp ready. Shift+Enter inserts newline; Enter runs the code.', 'info');
@@ -314,9 +374,13 @@
         canvas.classList.add('flash');
         setTimeout(() => canvas.classList.remove('flash'), 300);
         snapshotHeap();
+        updateStats();
       });
       autoSnapshotCheckbox.addEventListener('change', updateAutoSnapshot);
       updateAutoSnapshot();
+
+      setInterval(updateStats, 500);
+      updateStats();
       snapshotHeap();
     };
   </script>

@@ -162,6 +162,8 @@ python3 -m http.server 8080 --directory web
 
 Open `http://localhost:8080/` to use the bundled `web/index.html` harness that loads `interpreter.js`, lets you pick a GC backend (mark-sweep / copying / generational), run programs, and inspect the heap. The Canvas view color-codes objects (numbers, cons cells, lambdas, bindings, etc.) so you can watch mark-sweep fragmentation or copying/Generational compaction in real time. Use “Auto snapshot” to refresh the view while your program allocates.
 
+The "GC Stats" panel provides real-time metrics including total allocations, pause times, and fragmentation indices, helping you visualize the performance characteristics of each GC algorithm.
+
 A hosted build is also available via GitHub Pages at `https://miyaichi.github.io/Minimalisp/landing.html`, which links to the live “Minimalisp WASM Playground” (`index.html`). The landing page describes the project and the playground serves the interactive REPL + heap viz directly in your browser.
 
 ---
