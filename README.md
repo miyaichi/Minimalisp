@@ -108,6 +108,11 @@ Every invocation loads `standard-lib.lisp` before user code. The file defines pu
 
 **Troubleshooting**: If you see "Warning: standard-lib.lisp not found", the interpreter will continue but standard functions will be unavailable. Ensure the file exists in the current directory or at `/standard-lib.lisp` for WASM.
 
+**Lazy Evaluation**: Functions like `and`/`or` that require lazy evaluation (short-circuiting) cannot be implemented as regular functions because all arguments are evaluated before the function call. While `fexpr`s were historically used for this, they are now considered bad practice. Until macros are implemented, please use `tand` and `tor` (Thunk-AND / Thunk-OR) by wrapping arguments in lambdas (thunks) to achieve lazy evaluation:
+```lisp
+(tand (lambda () (> x 0)) (lambda () (< x 10)))
+```
+
 ### Garbage Collection Controls
 
 ```sh

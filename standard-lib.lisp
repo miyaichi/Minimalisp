@@ -97,3 +97,15 @@
       (if (pred (car xs))
           (all pred (cdr xs))
           '())))
+
+(define (tand thunk1 thunk2)
+  (if (thunk1)
+      (thunk2)
+      '()))
+
+(define (tor thunk1 thunk2)
+  ((lambda (val)
+     (if val
+         val
+         (thunk2)))
+   (thunk1)))
