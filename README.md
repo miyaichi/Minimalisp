@@ -31,6 +31,7 @@
 - Automatic garbage collection with configurable thresholds and manual `(gc)` / `(gc-threshold ...)` builtins for deterministic tuning.
 - Buildable to native binary **and** WebAssembly.
 - Abstract GC API (`include/gc.h` + `src/gc/*`) with swappable backends (mark‑sweep by default, copying GC via `GC_BACKEND=copying`).
+- **Educational**: Designed as a "glass-box" for learning interpreter internals and GC implementation. See [`docs/learning.md`](docs/learning.md) for suggested learning paths and exercises.
 
 ---
 
