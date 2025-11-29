@@ -35,6 +35,101 @@ typedef struct {
     void **slot;
 } RootSlot;
 
+// Hash table for fast root lookups
+typedef struct {
+    void **slot;
+    size_t index; // Index in roots array
+} RootHashEntry;
+
+static RootHashEntry *root_hash = NULL;
+static size_t root_hash_capacity = 0;
+static size_t root_hash_count = 0;
+
+// Hash function
+static size_t hash_ptr(void *ptr) {
+    size_t h = (size_t)ptr >> 3;
+    return h ^ (h >> 16);
+}
+
+static void root_hash_insert(void **slot, size_t index);
+
+static void root_hash_resize(size_t new_capacity) {
+    RootHashEntry *old_hash = root_hash;
+    size_t old_capacity = root_hash_capacity;
+
+    root_hash_capacity = new_capacity;
+    root_hash = (RootHashEntry *)calloc(root_hash_capacity, sizeof(RootHashEntry));
+    root_hash_count = 0;
+
+    if (old_hash) {
+        for (size_t i = 0; i < old_capacity; ++i) {
+            if (old_hash[i].slot) {
+                root_hash_insert(old_hash[i].slot, old_hash[i].index);
+            }
+        }
+        free(old_hash);
+    }
+}
+
+static void root_hash_insert(void **slot, size_t index) {
+    if (root_hash_count * 2 >= root_hash_capacity) {
+        root_hash_resize(root_hash_capacity ? root_hash_capacity * 2 : 1024);
+    }
+    
+    size_t h = hash_ptr(slot) & (root_hash_capacity - 1);
+    while (root_hash[h].slot) {
+        if (root_hash[h].slot == slot) {
+            root_hash[h].index = index; // Update index
+            return;
+        }
+        h = (h + 1) & (root_hash_capacity - 1);
+    }
+    root_hash[h].slot = slot;
+    root_hash[h].index = index;
+    root_hash_count++;
+}
+
+static size_t root_hash_find(void **slot, int *found) {
+    if (!root_hash) {
+        *found = 0;
+        return 0;
+    }
+    size_t h = hash_ptr(slot) & (root_hash_capacity - 1);
+    while (root_hash[h].slot) {
+        if (root_hash[h].slot == slot) {
+            *found = 1;
+            return root_hash[h].index;
+        }
+        h = (h + 1) & (root_hash_capacity - 1);
+    }
+    *found = 0;
+    return 0;
+}
+
+static void root_hash_delete(void **slot) {
+    if (!root_hash) return;
+    size_t h = hash_ptr(slot) & (root_hash_capacity - 1);
+    while (root_hash[h].slot) {
+        if (root_hash[h].slot == slot) {
+            root_hash[h].slot = NULL;
+            root_hash_count--;
+            
+            // Rehash subsequent entries in the cluster
+            size_t i = (h + 1) & (root_hash_capacity - 1);
+            while (root_hash[i].slot) {
+                void **s = root_hash[i].slot;
+                size_t idx = root_hash[i].index;
+                root_hash[i].slot = NULL;
+                root_hash_count--;
+                root_hash_insert(s, idx);
+                i = (i + 1) & (root_hash_capacity - 1);
+            }
+            return;
+        }
+        h = (h + 1) & (root_hash_capacity - 1);
+    }
+}
+
 typedef struct {
     void **slot;
 } RememberedSlot;
@@ -287,6 +382,13 @@ static void generational_init(void) {
     root_count = root_capacity = 0;
     remembered_count = remembered_capacity = 0;
     free(roots); roots = NULL;
+    
+    if (root_hash) {
+        free(root_hash);
+        root_hash = NULL;
+        root_hash_capacity = 0;
+        root_hash_count = 0;
+    }
     free(remembered); remembered = NULL;
     memset(&gc_stats, 0, sizeof(gc_stats));
     // Timing fields are zero-initialized by memset
@@ -529,22 +631,38 @@ static void gen_set_tag(void *ptr, unsigned char tag) {
 
 static void ensure_root_slot(void **slot) {
     if (!slot) return;
-    for (size_t i = 0; i < root_count; ++i) {
-        if (roots[i].slot == slot) return;
-    }
+    
+    int found = 0;
+    root_hash_find(slot, &found);
+    if (found) return;
+
     ensure_root_capacity(root_count + 1);
-    roots[root_count++].slot = slot;
+    roots[root_count].slot = slot;
+    root_hash_insert(slot, root_count);
+    root_count++;
 }
 
 static void remove_root_slot(void **slot) {
     if (!slot) return;
-    for (size_t i = 0; i < root_count; ++i) {
-        if (roots[i].slot == slot) {
-            roots[i] = roots[root_count - 1];
-            root_count--;
-            return;
-        }
+    
+    int found = 0;
+    size_t index = root_hash_find(slot, &found);
+    if (!found) return;
+
+    // Remove from hash
+    root_hash_delete(slot);
+
+    // Swap with last element in array
+    size_t last_index = root_count - 1;
+    if (index != last_index) {
+        RootSlot last = roots[last_index];
+        roots[index] = last;
+        
+        // Update index of moved element in hash
+        root_hash_insert(last.slot, index);
     }
+    
+    root_count--;
 }
 
 static void add_remembered_slot(void **slot) {
