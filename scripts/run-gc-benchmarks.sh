@@ -9,14 +9,15 @@ BACKENDS=("mark-sweep" "copying" "generational")
 BENCHMARKS=("alloc-intensive" "mixed-lifetime" "pointer-dense" "fragmentation" "real-world")
 RESULTS_DIR="results"
 INTERPRETER="./interpreter"
+SEPARATOR="========================================="
 
 # Create results directory
 mkdir -p "$RESULTS_DIR"
 
 # Print header
-echo "========================================="
+echo "$SEPARATOR"
 echo "GC Performance Benchmark Suite"
-echo "========================================="
+echo "$SEPARATOR"
 echo ""
 
 # Run benchmarks
@@ -31,11 +32,11 @@ for backend in "${BACKENDS[@]}"; do
         output_file="$RESULTS_DIR/${backend}_${benchmark}.log"
         
         # Run benchmark with appropriate backend
-        if [ "$backend" = "mark-sweep" ]; then
+        if [[ "$backend" = "mark-sweep" ]]; then
             $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
-        elif [ "$backend" = "copying" ]; then
+        elif [[ "$backend" = "copying" ]]; then
             GC_INITIAL_HEAP_SIZE=33554432 GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
-        elif [ "$backend" = "generational" ]; then
+        elif [[ "$backend" = "generational" ]]; then
             GC_INITIAL_HEAP_SIZE=16777216 GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
         else
             GC_BACKEND=$backend $INTERPRETER -f "benchmarks/${benchmark}.lisp" > "$output_file" 2>&1
@@ -47,7 +48,7 @@ for backend in "${BACKENDS[@]}"; do
     echo ""
 done
 
-echo "========================================="
+echo "$SEPARATOR"
 echo "All benchmarks completed!"
 echo "Results saved to: $RESULTS_DIR/"
-echo "========================================="
+echo "$SEPARATOR"
